@@ -40,4 +40,870 @@
         <h2 class="text-sm font-semibold mb-2">달력</h2>
         <div id="calendarContainer"></div>
       </div>
-      <div class="p-3 text-xs text-slate-400 border-t"
+      <div class="p-3 text-xs text-slate-400 border-t">
+        로컬 저장소(LocalStorage/IndexedDB)에 저장됩니다.
+      </div>
+    </aside>
+
+    <!-- Main: Editor -->
+    <main class="flex-1 overflow-hidden">
+      <!-- Top bar -->
+      <div class="px-5 py-3 bg-white border-b flex items-center gap-3">
+        <input id="reportTitle" class="text-lg font-bold flex-1 outline-none bg-transparent" placeholder="보고서 제목 (예: 2025-08-27 FR7 품질개선 일일 보고)" />
+        <div id="autosaveState" class="text-xs text-slate-500">저장 상태: -</div>
+      </div>
+
+      <!-- Tabs -->
+      <div class="px-5 pt-4 bg-white border-b">
+        <div class="flex gap-2 text-sm">
+          <button data-tab="tab-summary" class="tab-btn px-3 py-2 rounded-t bg-slate-100 font-semibold">요약</button>
+          <button data-tab="tab-process" class="tab-btn px-3 py-2 rounded-t">과정</button>
+          <button data-tab="tab-results" class="tab-btn px-3 py-2 rounded-t">결과·측정</button>
+          <button data-tab="tab-captures" class="tab-btn px-3 py-2 rounded-t">캡처</button>
+          <button data-tab="tab-video" class="tab-btn px-3 py-2 rounded-t">영상 비교</button>
+          <button data-tab="tab-output" class="tab-btn px-3 py-2 rounded-t">산출물</button>
+        </div>
+      </div>
+
+      <!-- Tab contents -->
+      <section id="tab-summary" class="tab-pane p-5 overflow-y-auto thin-scroll h-[calc(100vh-136px)]">
+        <div class="grid grid-cols-1 lg:grid-cols-2 gap-4">
+          <div class="bg-white rounded-xl shadow p-4">
+            <h2 class="font-semibold mb-3">기본 정보</h2>
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-3 text-sm">
+              <label class="space-y-1">
+                <span class="text-slate-600">보고 날짜 (KST)</span>
+                <input id="dateKST" type="text" class="w-full rounded border p-2" />
+              </label>
+              <label class="space-y-1">
+                <span class="text-slate-600">프로젝트</span>
+                <input id="project" type="text" class="w-full rounded border p-2" placeholder="예: WSOP SC Cyprus 2025"/>
+              </label>
+              <label class="space-y-1 md:col-span-2">
+                <span class="text-slate-600">촬영 장소/환경</span>
+                <input id="location" type="text" class="w-full rounded border p-2" placeholder="예: 피처테이블 존, 실내 3200K 조명"/>
+              </label>
+              <label class="space-y-1">
+                <span class="text-slate-600">담당자</span>
+                <input id="operator" type="text" class="w-full rounded border p-2" placeholder="예: Trey"/>
+              </label>
+              <label class="space-y-1">
+                <span class="text-slate-600">카메라/렌즈</span>
+                <input id="gear" type="text" class="w-full rounded border p-2" placeholder="예: Sony FR7 + 28–135mm F4, 펌웨어 vX.Y"/>
+              </label>
+            </div>
+          </div>
+
+          <div class="bg-white rounded-xl shadow p-4">
+            <h2 class="font-semibold mb-3">체크리스트 (QC: Quality Control — 품질 관리)</h2>
+            <div class="grid grid-cols-2 md:grid-cols-3 gap-x-4 gap-y-2 text-sm" id="qcList"></div>
+          </div>
+
+          <div class="bg-white rounded-xl shadow p-4 md:col-span-2">
+            <h2 class="font-semibold mb-3">오늘의 요약</h2>
+            <textarea id="summary" class="w-full min-h-32 rounded border p-3 text-sm" placeholder="핵심 목표, 주요 변경점, 결과 개요를 간단히 정리"></textarea>
+          </div>
+        </div>
+      </section>
+
+      <section id="tab-process" class="tab-pane hidden p-5 overflow-y-auto thin-scroll h-[calc(100vh-136px)]">
+        <div class="grid grid-cols-1 lg:grid-cols-2 gap-4">
+          <div class="bg-white rounded-xl shadow p-4">
+            <h2 class="font-semibold mb-2">이전 진행 사항</h2>
+            <textarea id="prevWork" class="w-full min-h-40 rounded border p-3 text-sm" placeholder="어제까지/이전 스프린트에서 무엇을 했는지"></textarea>
+          </div>
+          <div class="bg-white rounded-xl shadow p-4">
+            <h2 class="font-semibold mb-2">오늘 수정/시도한 것</h2>
+            <textarea id="todayChanges" class="w-full min-h-40 rounded border p-3 text-sm" placeholder="예: 감마 곡선 조정, 노이즈 감소, LUT(Look-Up Table — 룩업 테이블) 변경 등"></textarea>
+          </div>
+          <div class="bg-white rounded-xl shadow p-4 lg:col-span-2">
+            <h2 class="font-semibold mb-2">새롭게 알게 된 점</h2>
+            <textarea id="learnings" class="w-full min-h-32 rounded border p-3 text-sm" placeholder="실험/현장 피드백에서 확인된 사실"></textarea>
+          </div>
+          <div class="bg-white rounded-xl shadow p-4 lg:col-span-2">
+            <h2 class="font-semibold mb-2">문제 & 해결</h2>
+            <textarea id="issuesFixes" class="w-full min-h-32 rounded border p-3 text-sm" placeholder="발견된 이슈와 해결 방법, 미해결 항목"></textarea>
+          </div>
+        </div>
+      </section>
+
+      <section id="tab-results" class="tab-pane hidden p-5 overflow-y-auto thin-scroll h-[calc(100vh-136px)]">
+        <div class="grid grid-cols-1 lg:grid-cols-2 gap-4">
+          <div class="bg-white rounded-xl shadow p-4">
+            <h2 class="font-semibold mb-3">수치/설정 기록</h2>
+            <div class="grid grid-cols-2 gap-3 text-sm">
+              <label class="space-y-1">
+                <span class="text-slate-600">노출 편차 (EV)</span>
+                <input id="metricEV" type="number" step="0.01" class="w-full rounded border p-2" />
+              </label>
+              <label class="space-y-1">
+                <span class="text-slate-600">SNR (Signal-to-Noise Ratio — 신호대잡음비)</span>
+                <input id="metricSNR" type="number" step="0.1" class="w-full rounded border p-2" />
+              </label>
+              <label class="space-y-1">
+                <span class="text-slate-600">WB (White Balance — 화이트 밸런스) ΔCCT</span>
+                <input id="metricCCT" type="number" step="1" class="w-full rounded border p-2" />
+              </label>
+              <label class="space-y-1">
+                <span class="text-slate-600">WB ΔTint</span>
+                <input id="metricTint" type="number" step="0.1" class="w-full rounded border p-2" />
+              </label>
+              <label class="space-y-1">
+                <span class="text-slate-600">선예도(Sharpness) MTF50</span>
+                <input id="metricMTF" type="number" step="0.1" class="w-full rounded border p-2" />
+              </label>
+              <label class="space-y-1">
+                <span class="text-slate-600">ISO</span>
+                <input id="metricISO" type="number" class="w-full rounded border p-2" />
+              </label>
+              <label class="space-y-1">
+                <span class="text-slate-600">셔터(각/속도)</span>
+                <input id="metricShutter" type="text" class="w-full rounded border p-2" placeholder="예: 1/100 또는 180°" />
+              </label>
+              <label class="space-y-1">
+                <span class="text-slate-600">조리개</span>
+                <input id="metricAperture" type="text" class="w-full rounded border p-2" placeholder="예: F4.0" />
+              </label>
+              <label class="space-y-1 md:col-span-2">
+                <span class="text-slate-600">감마/픽처 프로파일</span>
+                <input id="metricGamma" type="text" class="w-full rounded border p-2" placeholder="예: S-Cinetone, S-Log3 등" />
+              </label>
+              <label class="space-y-1 md:col-span-2">
+                <span class="text-slate-600">사용 LUT (Look-Up Table — 룩업 테이블)</span>
+                <input id="metricLUT" type="text" class="w-full rounded border p-2" placeholder="예: 709 LUT v2" />
+              </label>
+            </div>
+          </div>
+          <div class="bg-white rounded-xl shadow p-4">
+            <h2 class="font-semibold mb-3">결과 요약</h2>
+            <textarea id="resultSummary" class="w-full min-h-40 rounded border p-3 text-sm" placeholder="측정값 해석, 화질 개선 체감, 비교 결론"></textarea>
+          </div>
+          <div class="bg-white rounded-xl shadow p-4 lg:col-span-2">
+            <h2 class="font-semibold mb-3">다음 액션</h2>
+            <textarea id="nextActions" class="w-full min-h-28 rounded border p-3 text-sm" placeholder="내일/다음 스프린트에 할 일"></textarea>
+          </div>
+        </div>
+      </section>
+
+      <section id="tab-captures" class="tab-pane hidden p-5 overflow-y-auto thin-scroll h-[calc(100vh-136px)]">
+        <div class="flex items-center justify-between mb-3">
+          <h2 class="font-semibold">캡처 & 이미지</h2>
+          <div class="flex items-center gap-2">
+            <label class="cursor-pointer text-sm px-3 py-2 rounded bg-blue-600 text-white hover:bg-blue-700">
+              이미지 추가
+              <input id="imgInput" type="file" accept="image/*" multiple class="hidden">
+            </label>
+            <button id="captureFromVideo" class="text-sm px-3 py-2 rounded bg-emerald-600 text-white hover:bg-emerald-700">영상 프레임 캡처</button>
+          </div>
+        </div>
+        <div id="imgGrid" class="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4"></div>
+      </section>
+
+      <section id="tab-video" class="tab-pane hidden p-5 overflow-y-auto thin-scroll h-[calc(100vh-136px)]">
+        <div class="grid grid-cols-1 xl:grid-cols-2 gap-4">
+          <div class="bg-white rounded-xl shadow p-4 space-y-3">
+            <div class="flex items-center justify-between">
+              <h2 class="font-semibold">영상 A</h2>
+              <label class="cursor-pointer text-sm px-3 py-2 rounded bg-slate-700 text-white hover:bg-slate-800">
+                파일 선택
+                <input id="vidAInput" type="file" accept="video/*" class="hidden">
+              </label>
+            </div>
+            <video id="vidA" class="w-full rounded-lg bg-black" controls></video>
+            <div class="text-xs text-slate-500" id="vidAName"></div>
+            <label class="text-xs text-slate-600">오프셋(초)
+              <input id="vidAOffset" type="number" step="0.1" value="0" class="ml-2 w-24 rounded border p-1">
+            </label>
+          </div>
+          <div class="bg-white rounded-xl shadow p-4 space-y-3">
+            <div class="flex items-center justify-between">
+              <h2 class="font-semibold">영상 B</h2>
+              <label class="cursor-pointer text-sm px-3 py-2 rounded bg-slate-700 text-white hover:bg-slate-800">
+                파일 선택
+                <input id="vidBInput" type="file" accept="video/*" class="hidden">
+              </label>
+            </div>
+            <video id="vidB" class="w-full rounded-lg bg-black" controls></video>
+            <div class="text-xs text-slate-500" id="vidBName"></div>
+            <label class="text-xs text-slate-600">오프셋(초)
+              <input id="vidBOffset" type="number" step="0.1" value="0" class="ml-2 w-24 rounded border p-1">
+            </label>
+          </div>
+        </div>
+
+        <div class="mt-4 bg-white rounded-xl shadow p-4 space-y-3">
+          <div class="flex flex-wrap items-center gap-3 text-sm">
+            <label><input id="syncPlay" type="checkbox" class="mr-1">동기 재생</label>
+            <label><input id="linkTime" type="checkbox" class="mr-1">타임라인 연동</label>
+            <label>재생 속도
+              <select id="playbackRate" class="ml-2 border rounded p-1">
+                <option value="0.5">0.5x</option>
+                <option value="0.75">0.75x</option>
+                <option value="1" selected>1x</option>
+                <option value="1.25">1.25x</option>
+                <option value="1.5">1.5x</option>
+                <option value="2">2x</option>
+              </select>
+            </label>
+            <button id="abToggle" class="px-3 py-1.5 rounded bg-blue-600 text-white">A/B 토글 (Tab)</button>
+            <button id="snapCurrent" class="px-3 py-1.5 rounded bg-emerald-600 text-white">현재 프레임 캡처→이미지</button>
+          </div>
+          <div class="flex items-center gap-3">
+            <input id="masterTime" type="range" min="0" max="100" value="0" class="flex-1">
+            <span id="masterTimeLabel" class="text-xs text-slate-600 w-28 text-right">0s</span>
+          </div>
+          <p class="text-xs text-slate-500">동기 규칙: 마스터 슬라이더 시간 + 각 영상 오프셋(초) = 해당 영상의 실제 재생 시각</p>
+        </div>
+      </section>
+
+      <section id="tab-output" class="tab-pane hidden p-5 overflow-y-auto thin-scroll h-[calc(100vh-136px)]">
+        <div class="grid grid-cols-1 lg:grid-cols-2 gap-4">
+          <div class="bg-white rounded-xl shadow p-4 space-y-3">
+            <h2 class="font-semibold">미리보기 (Markdown)</h2>
+            <textarea id="mdPreview" class="w-full min-h-96 rounded border p-3 text-sm font-mono" readonly></textarea>
+            <div class="flex gap-2">
+              <button id="copyMdBtn" class="px-3 py-2 rounded bg-slate-900 text-white text-sm">Markdown 복사</button>
+              <button id="downloadHtmlBtn" class="px-3 py-2 rounded bg-blue-600 text-white text-sm">단일 HTML 스냅샷 다운로드</button>
+            </div>
+          </div>
+          <div class="bg-white rounded-xl shadow p-4 space-y-3">
+            <h2 class="font-semibold">메모</h2>
+            <textarea id="notes" class="w-full min-h-96 rounded border p-3 text-sm" placeholder="공유시 주의사항, 링크, 담당자 전달 메모 등"></textarea>
+          </div>
+        </div>
+      </section>
+    </main>
+  </div>
+
+  <script>
+    // --------- Utilities ---------
+    const $ = (sel, el=document) => el.querySelector(sel);
+    const $$ = (sel, el=document) => Array.from(el.querySelectorAll(sel));
+
+    const KST = {
+      nowString(){
+        return new Date().toLocaleString('ko-KR', { timeZone: 'Asia/Seoul', hour12: false });
+      },
+      todayISO(){
+        const d = new Date(new Date().toLocaleString('en-US', { timeZone: 'Asia/Seoul' }));
+        return d.toISOString().slice(0,10);
+      }
+    };
+
+    // Persistent stores
+    const LS_KEY = 'fr7-daily-reports-v1';
+    let state = {
+      reports: [], // minimal list (no heavy blobs)
+      currentId: null
+    };
+
+    function loadState(){
+      try{
+        const raw = localStorage.getItem(LS_KEY);
+        if(raw){ state = JSON.parse(raw); }
+      }catch(e){ console.warn('loadState error', e); }
+    }
+    function saveState(){
+      localStorage.setItem(LS_KEY, JSON.stringify(state));
+      $('#autosaveState').textContent = '저장 상태: ' + new Date().toLocaleTimeString();
+    }
+
+    // Simple IndexedDB for blobs (images/videos)
+    const idb = (()=>{
+      let db;
+      function open(){
+        return new Promise((resolve, reject)=>{
+          const req = indexedDB.open('fr7ReportsDB', 1);
+          req.onupgradeneeded = e=>{
+            db = e.target.result;
+            if(!db.objectStoreNames.contains('blobs')) db.createObjectStore('blobs');
+          };
+          req.onsuccess = e=>{ db = e.target.result; resolve(); };
+          req.onerror = e=>reject(e);
+        });
+      }
+      async function put(key, data){
+        await openIfNeeded();
+        return new Promise((resolve,reject)=>{
+          const tx = db.transaction('blobs','readwrite');
+          tx.objectStore('blobs').put(data, key);
+          tx.oncomplete = ()=>resolve();
+          tx.onerror = e=>reject(e);
+        });
+      }
+      async function get(key){
+        await openIfNeeded();
+        return new Promise((resolve,reject)=>{
+          const tx = db.transaction('blobs','readonly');
+          const req = tx.objectStore('blobs').get(key);
+          req.onsuccess = ()=>resolve(req.result);
+          req.onerror = e=>reject(e);
+        });
+      }
+      async function del(key){
+        await openIfNeeded();
+        return new Promise((resolve,reject)=>{
+          const tx = db.transaction('blobs','readwrite');
+          tx.objectStore('blobs').delete(key);
+          tx.oncomplete = ()=>resolve();
+          tx.onerror = e=>reject(e);
+        });
+      }
+      async function openIfNeeded(){ if(!db) await open(); }
+      return { put, get, del };
+    })();
+
+    // --------- Report Model ---------
+    function createEmptyReport(){
+      const id = 'r_' + Math.random().toString(36).slice(2);
+      return {
+        id,
+        title: KST.todayISO() + ' FR7 품질개선 일일 보고',
+        dateKST: KST.nowString(),
+        project: '',
+        location: '',
+        operator: '',
+        gear: '',
+        qc: defaultQC().map(x=>({ ...x })),
+        summary: '',
+        prevWork: '',
+        todayChanges: '',
+        learnings: '',
+        issuesFixes: '',
+        metrics: { EV: '', SNR: '', CCT: '', Tint: '', MTF: '', ISO: '', Shutter: '', Aperture: '', Gamma: '', LUT: '' },
+        resultSummary: '',
+        nextActions: '',
+        images: [], // {id, blobKey, caption, thumbDataUrl}
+        videos: { A: { name:'', blobKey:null, offset:0 }, B: { name:'', blobKey:null, offset:0 } },
+        notes: ''
+      };
+    }
+
+    function defaultQC(){
+      return [
+        { k:'초점', v:false },
+        { k:'노출', v:false },
+        { k:'WB(White Balance — 화이트 밸런스) 일치', v:false },
+        { k:'컬러 매칭', v:false },
+        { k:'노이즈', v:false },
+        { k:'플리커', v:false },
+        { k:'롤링 셔터', v:false },
+        { k:'샤프니스', v:false },
+        { k:'스태빌라이징', v:false },
+        { k:'스킨 톤', v:false },
+        { k:'하이라이트 보존', v:false },
+        { k:'섀도우 디테일', v:false }
+      ];
+    }
+
+    function getCurrent(){ return state.reports.find(r=>r.id===state.currentId) || null; }
+
+    function setCurrent(id){
+      state.currentId = id;
+      saveState();
+      renderReportList();
+      renderEditor();
+    }
+
+    // --------- Rendering ---------
+    function renderReportList(){
+      const box = $('#reportList');
+      box.innerHTML = '';
+      const sorted = [...state.reports].sort((a,b)=> (b.dateKST||'').localeCompare(a.dateKST||''));
+      for(const r of sorted){
+        const isActive = r.id===state.currentId;
+        const item = document.createElement('button');
+        item.className = 'w-full text-left p-3 hover:bg-slate-50 ' + (isActive?'bg-blue-50':'');
+        item.innerHTML = `
+          <div class="font-semibold truncate">${escapeHtml(r.title||'(제목 없음)')}</div>
+          <div class="text-xs text-slate-500">${escapeHtml(r.dateKST||'')}</div>
+        `;
+        item.onclick = ()=> setCurrent(r.id);
+        box.appendChild(item);
+      }
+    }
+
+    function renderEditor(){
+      const r = getCurrent();
+      const disabled = !r;
+      for(const el of ['reportTitle','dateKST','project','location','operator','gear','summary','prevWork','todayChanges','learnings','issuesFixes','resultSummary','nextActions','notes','metricEV','metricSNR','metricCCT','metricTint','metricMTF','metricISO','metricShutter','metricAperture','metricGamma','metricLUT']){
+        const node = document.getElementById(el);
+        if(!node) continue;
+        node.disabled = disabled;
+      }
+      if(!r){ return; }
+
+      // Fill fields
+      $('#reportTitle').value = r.title||'';
+      $('#dateKST').value = r.dateKST||KST.nowString();
+      $('#project').value = r.project||'';
+      $('#location').value = r.location||'';
+      $('#operator').value = r.operator||'';
+      $('#gear').value = r.gear||'';
+      $('#summary').value = r.summary||'';
+      $('#prevWork').value = r.prevWork||'';
+      $('#todayChanges').value = r.todayChanges||'';
+      $('#learnings').value = r.learnings||'';
+      $('#issuesFixes').value = r.issuesFixes||'';
+      $('#resultSummary').value = r.resultSummary||'';
+      $('#nextActions').value = r.nextActions||'';
+      $('#notes').value = r.notes||'';
+
+      $('#metricEV').value = r.metrics.EV||'';
+      $('#metricSNR').value = r.metrics.SNR||'';
+      $('#metricCCT').value = r.metrics.CCT||'';
+      $('#metricTint').value = r.metrics.Tint||'';
+      $('#metricMTF').value = r.metrics.MTF||'';
+      $('#metricISO').value = r.metrics.ISO||'';
+      $('#metricShutter').value = r.metrics.Shutter||'';
+      $('#metricAperture').value = r.metrics.Aperture||'';
+      $('#metricGamma').value = r.metrics.Gamma||'';
+      $('#metricLUT').value = r.metrics.LUT||'';
+
+      // QC list
+      const qcBox = $('#qcList');
+      qcBox.innerHTML = '';
+      (r.qc?.length? r.qc: defaultQC()).forEach((row, idx)=>{
+        const wrap = document.createElement('label');
+        wrap.className = 'inline-flex items-center gap-2';
+        wrap.innerHTML = `<input type="checkbox" ${row.v?'checked':''} data-idx="${idx}" class="qcCheck"> <span class="text-slate-700">${escapeHtml(row.k)}</span>`;
+        qcBox.appendChild(wrap);
+      });
+
+      // Images
+      renderImages();
+
+      // Videos
+      loadVideo('A'); loadVideo('B');
+
+      // Markdown preview
+      updateMarkdown();
+    }
+
+    function renderImages(){
+      const r = getCurrent();
+      const grid = $('#imgGrid');
+      grid.innerHTML = '';
+      (r.images||[]).forEach((img, idx)=>{
+        const card = document.createElement('div');
+        card.className = 'bg-white rounded-xl shadow p-3 space-y-2';
+        card.draggable = true;
+        card.addEventListener('dragstart', e=>{
+          e.dataTransfer.setData('text/plain', idx);
+          card.classList.add('opacity-50');
+        });
+        card.addEventListener('dragend', ()=> card.classList.remove('opacity-50'));
+        card.addEventListener('dragover', e=>{ e.preventDefault(); card.classList.add('drag-over'); });
+        card.addEventListener('dragleave', ()=> card.classList.remove('drag-over'));
+        card.addEventListener('drop', async e=>{
+          e.preventDefault(); card.classList.remove('drag-over');
+          const from = parseInt(e.dataTransfer.getData('text/plain'),10);
+          const to = idx;
+          if(from===to) return;
+          const moved = r.images.splice(from,1)[0];
+          r.images.splice(to,0,moved);
+          saveState(); renderImages(); updateMarkdown();
+        });
+
+        const imgEl = document.createElement('img');
+        imgEl.className = 'w-full h-40 object-cover rounded';
+        imgEl.src = img.thumbDataUrl || '';
+        imgEl.alt = img.caption || '';
+
+        const cap = document.createElement('input');
+        cap.className = 'w-full text-xs border rounded p-2';
+        cap.placeholder = '캡션';
+        cap.value = img.caption || '';
+        cap.oninput = ()=>{ img.caption = cap.value; saveState(); updateMarkdown(); };
+
+        const row = document.createElement('div');
+        row.className = 'flex items-center justify-between text-xs';
+        const btns = document.createElement('div');
+        btns.className = 'flex gap-2';
+        const upBtn = document.createElement('button'); upBtn.textContent = '▲'; upBtn.className='px-2 py-1 rounded bg-slate-100';
+        const dnBtn = document.createElement('button'); dnBtn.textContent = '▼'; dnBtn.className='px-2 py-1 rounded bg-slate-100';
+        const delBtn = document.createElement('button'); delBtn.textContent = '삭제'; delBtn.className='px-2 py-1 rounded bg-red-600 text-white';
+        upBtn.onclick = ()=>{ if(idx>0){ const t=r.images[idx-1]; r.images[idx-1]=r.images[idx]; r.images[idx]=t; saveState(); renderImages(); updateMarkdown(); } };
+        dnBtn.onclick = ()=>{ if(idx<r.images.length-1){ const t=r.images[idx+1]; r.images[idx+1]=r.images[idx]; r.images[idx]=t; saveState(); renderImages(); updateMarkdown(); } };
+        delBtn.onclick = async ()=>{ if(confirm('이미지를 삭제할까요?')){ await idb.del(img.blobKey); r.images.splice(idx,1); saveState(); renderImages(); updateMarkdown(); } };
+        btns.append(upBtn, dnBtn, delBtn);
+        row.append(document.createElement('span'), btns);
+
+        card.append(imgEl, cap, row);
+        grid.appendChild(card);
+      });
+    }
+
+    // --------- Video Handling ---------
+    async function loadVideo(which){
+      const r = getCurrent(); if(!r) return;
+      const v = r.videos[which];
+      const videoEl = which==='A'? $('#vidA'): $('#vidB');
+      const nameEl = which==='A'? $('#vidAName'): $('#vidBName');
+      const offsetEl = which==='A'? $('#vidAOffset'): $('#vidBOffset');
+
+      videoEl.src = '';
+      if(v && v.blobKey){
+        const blob = await idb.get(v.blobKey);
+        if(blob){ videoEl.src = URL.createObjectURL(blob); }
+      }
+      nameEl.textContent = v?.name || '';
+      offsetEl.value = v?.offset || 0;
+    }
+
+    function setPlaybackRate(rate){
+      $('#vidA').playbackRate = rate; $('#vidB').playbackRate = rate;
+    }
+
+    function syncFromMasterSlider(){
+      const r = getCurrent(); if(!r) return;
+      const t = Number($('#masterTime').value);
+      $('#masterTimeLabel').textContent = t + 's';
+      const a = $('#vidA'); const b = $('#vidB');
+      const ta = Math.max(0, t + Number(r.videos.A.offset||0));
+      const tb = Math.max(0, t + Number(r.videos.B.offset||0));
+      if(!isNaN(ta)) a.currentTime = ta; if(!isNaN(tb)) b.currentTime = tb;
+    }
+
+    function maybeLinkTimes(src){
+      if(!$('#linkTime').checked) return;
+      const r = getCurrent(); if(!r) return;
+      const a = $('#vidA'); const b = $('#vidB');
+      if(src===a){
+        const master = Math.max(0, a.currentTime - Number(r.videos.A.offset||0));
+        $('#masterTime').value = master; $('#masterTimeLabel').textContent = master + 's';
+        const target = Math.max(0, master + Number(r.videos.B.offset||0));
+        if(Math.abs(b.currentTime - target)>0.15) b.currentTime = target;
+      }else{
+        const master = Math.max(0, b.currentTime - Number(r.videos.B.offset||0));
+        $('#masterTime').value = master; $('#masterTimeLabel').textContent = master + 's';
+        const target = Math.max(0, master + Number(r.videos.A.offset||0));
+        if(Math.abs(a.currentTime - target)>0.15) a.currentTime = target;
+      }
+    }
+
+    function abToggle(){
+      const a = $('#vidA'); const b = $('#vidB');
+      if(a.style.opacity==='' || a.style.opacity==='1'){ a.style.opacity = '0.25'; b.style.opacity = '1'; }
+      else { a.style.opacity = '1'; b.style.opacity = '0.25'; }
+    }
+
+    async function captureCurrentFrameIntoImages(){
+      const r = getCurrent(); if(!r) return;
+      const a = $('#vidA'); const b = $('#vidB');
+      const src = (a.paused? b : a) || a;
+      if(!src || src.readyState < 2) { alert('재생 가능한 영상이 필요합니다.'); return; }
+      const canvas = document.createElement('canvas');
+      canvas.width = src.videoWidth; canvas.height = src.videoHeight;
+      const ctx = canvas.getContext('2d');
+      ctx.drawImage(src, 0, 0);
+      const dataUrl = canvas.toDataURL('image/jpeg', 0.85);
+      const blob = await (await fetch(dataUrl)).blob();
+      const key = 'b_'+Math.random().toString(36).slice(2);
+      await idb.put(key, blob);
+      r.images.push({ id: 'img_'+Date.now(), blobKey:key, caption: `프레임 캡처 (${new Date().toLocaleString()})`, thumbDataUrl: dataUrl });
+      saveState(); renderImages(); updateMarkdown();
+    }
+
+    // --------- Events & Bindings ---------
+    function bindInputs(){
+      // tabs
+      $$('.tab-btn').forEach(btn=>{
+        btn.addEventListener('click', ()=>{
+          const id = btn.dataset.tab;
+          $$('.tab-btn').forEach(b=> b.classList.remove('bg-slate-100','font-semibold'));
+          btn.classList.add('bg-slate-100','font-semibold');
+          $$('.tab-pane').forEach(p=> p.classList.add('hidden'));
+          $('#'+id).classList.remove('hidden');
+        });
+      });
+
+      // global inputs
+      const handlers = [
+        ['reportTitle','title'], ['dateKST','dateKST'], ['project','project'], ['location','location'],
+        ['operator','operator'], ['gear','gear'], ['summary','summary'], ['prevWork','prevWork'],
+        ['todayChanges','todayChanges'], ['learnings','learnings'], ['issuesFixes','issuesFixes'],
+        ['resultSummary','resultSummary'], ['nextActions','nextActions'], ['notes','notes']
+      ];
+      for(const [id, key] of handlers){
+        $('#'+id).addEventListener('input', ()=>{ const r=getCurrent(); if(!r) return; r[key]=$('#'+id).value; saveState(); updateMarkdown(); });
+      }
+
+      // metrics
+      const m = [['metricEV','EV'],['metricSNR','SNR'],['metricCCT','CCT'],['metricTint','Tint'],['metricMTF','MTF'],['metricISO','ISO'],['metricShutter','Shutter'],['metricAperture','Aperture'],['metricGamma','Gamma'],['metricLUT','LUT']];
+      m.forEach(([id, mk])=>{
+        $('#'+id).addEventListener('input', ()=>{ const r=getCurrent(); if(!r) return; r.metrics[mk] = $('#'+id).value; saveState(); updateMarkdown(); });
+      });
+
+      // QC
+      $('#qcList').addEventListener('change', (e)=>{
+        if(!e.target.classList.contains('qcCheck')) return;
+        const r = getCurrent(); if(!r) return;
+        const idx = Number(e.target.dataset.idx);
+        r.qc[idx].v = e.target.checked; saveState(); updateMarkdown();
+      });
+
+      // images add
+      $('#imgInput').addEventListener('change', async (e)=>{
+        const files = Array.from(e.target.files||[]);
+        const r = getCurrent(); if(!r) return;
+        for(const f of files){
+          const key = 'b_'+Math.random().toString(36).slice(2);
+          await idb.put(key, f);
+          const thumb = await fileToThumb(f, 800, 800);
+          r.images.push({ id:'img_'+Date.now()+Math.random(), blobKey:key, caption:f.name, thumbDataUrl:thumb });
+        }
+        e.target.value='';
+        saveState(); renderImages(); updateMarkdown();
+      });
+
+      // videos
+      $('#vidAInput').addEventListener('change', async (e)=>{
+        const f = e.target.files?.[0]; if(!f) return;
+        const r = getCurrent(); if(!r) return;
+        const key = 'b_'+Math.random().toString(36).slice(2);
+        await idb.put(key, f);
+        r.videos.A = { name: f.name, blobKey:key, offset: Number($('#vidAOffset').value)||0 };
+        saveState(); loadVideo('A');
+      });
+      $('#vidBInput').addEventListener('change', async (e)=>{
+        const f = e.target.files?.[0]; if(!f) return;
+        const r = getCurrent(); if(!r) return;
+        const key = 'b_'+Math.random().toString(36).slice(2);
+        await idb.put(key, f);
+        r.videos.B = { name: f.name, blobKey:key, offset: Number($('#vidBOffset').value)||0 };
+        saveState(); loadVideo('B');
+      });
+      $('#vidAOffset').addEventListener('input', (e)=>{ const r=getCurrent(); if(!r) return; r.videos.A.offset = Number(e.target.value)||0; saveState(); });
+      $('#vidBOffset').addEventListener('input', (e)=>{ const r=getCurrent(); if(!r) return; r.videos.B.offset = Number(e.target.value)||0; saveState(); });
+
+      // master controls
+      $('#playbackRate').addEventListener('change', (e)=> setPlaybackRate(Number(e.target.value)) );
+      $('#masterTime').addEventListener('input', syncFromMasterSlider);
+      $('#abToggle').addEventListener('click', abToggle);
+      $('#snapCurrent').addEventListener('click', captureCurrentFrameIntoImages);
+      $('#captureFromVideo').addEventListener('click', captureCurrentFrameIntoImages);
+
+      // link time updates
+      $('#vidA').addEventListener('timeupdate', ()=> maybeLinkTimes($('#vidA')) );
+      $('#vidB').addEventListener('timeupdate', ()=> maybeLinkTimes($('#vidB')) );
+
+      // sync play/pause
+      $('#syncPlay').addEventListener('change', ()=>{});
+      const sync = (evt)=>{
+        if(!$('#syncPlay').checked) return;
+        const src = evt.target;
+        const dst = src.id==='vidA'? $('#vidB'): $('#vidA');
+        if(evt.type==='play'){ dst.play().catch(()=>{}); }
+        if(evt.type==='pause'){ dst.pause(); }
+      };
+      $('#vidA').addEventListener('play', sync);
+      $('#vidA').addEventListener('pause', sync);
+      $('#vidB').addEventListener('play', sync);
+      $('#vidB').addEventListener('pause', sync);
+
+      // new / export / import / print
+      $('#newReportBtn').addEventListener('click', ()=>{
+        const r = createEmptyReport();
+        state.reports.push(r); setCurrent(r.id);
+      });
+
+      $('#exportJsonBtn').addEventListener('click', async ()=>{
+        const data = JSON.stringify(state, null, 2);
+        downloadBlob(new Blob([data],{type:'application/json'}), `fr7-daily-reports_${KST.todayISO()}.json`);
+      });
+
+      $('#importJsonInput').addEventListener('change', async (e)=>{
+        const f = e.target.files?.[0]; if(!f) return;
+        try{
+          const txt = await f.text();
+          const obj = JSON.parse(txt);
+          if(obj && obj.reports){ state = obj; saveState(); renderReportList(); renderEditor(); alert('가져오기 완료'); }
+        }catch(err){ alert('가져오기 실패: '+err.message); }
+        e.target.value='';
+      });
+
+      $('#printBtn').addEventListener('click', ()=> window.print() );
+      $('#copyMdBtn').addEventListener('click', ()=>{ navigator.clipboard.writeText($('#mdPreview').value); alert('Markdown 복사됨'); });
+      $('#downloadHtmlBtn').addEventListener('click', downloadSelfContainedHTML);
+
+      // keyboard
+      document.addEventListener('keydown', (e)=>{
+        if(e.key==='Tab' && !e.shiftKey){ e.preventDefault(); abToggle(); }
+      });
+    }
+
+    // --------- Markdown & Export ---------
+    function updateMarkdown(){
+      const r = getCurrent(); if(!r){ $('#mdPreview').value=''; return; }
+      const lines = [];
+      lines.push(`# ${r.title||''}`);
+      lines.push('');
+      lines.push(`- 보고 날짜(KST): ${r.dateKST||''}`);
+      lines.push(`- 프로젝트: ${r.project||''}`);
+      lines.push(`- 장소/환경: ${r.location||''}`);
+      lines.push(`- 담당자: ${r.operator||''}`);
+      lines.push(`- 장비: ${r.gear||''}`);
+      lines.push('');
+      lines.push('## 체크리스트 (QC: Quality Control — 품질 관리)');
+      for(const q of (r.qc||[])) lines.push(`- [${q.v?'x':' '}] ${q.k}`);
+      lines.push('');
+      lines.push('## 오늘의 요약');
+      lines.push(r.summary||'');
+      lines.push('');
+      lines.push('## 이전 진행 사항');
+      lines.push(r.prevWork||'');
+      lines.push('');
+      lines.push('## 오늘 수정/시도한 것');
+      lines.push(r.todayChanges||'');
+      lines.push('');
+      lines.push('## 새롭게 알게 된 점');
+      lines.push(r.learnings||'');
+      lines.push('');
+      lines.push('## 문제 & 해결');
+      lines.push(r.issuesFixes||'');
+      lines.push('');
+      lines.push('## 결과 요약');
+      lines.push(r.resultSummary||'');
+      lines.push('');
+      lines.push('## 수치/설정 기록');
+      const m = r.metrics||{};
+      lines.push(`- EV: ${m.EV||''}`);
+      lines.push(`- SNR (Signal-to-Noise Ratio — 신호대잡음비): ${m.SNR||''}`);
+      lines.push(`- WB(White Balance — 화이트 밸런스) ΔCCT: ${m.CCT||''}`);
+      lines.push(`- WB ΔTint: ${m.Tint||''}`);
+      lines.push(`- 선예도 MTF50: ${m.MTF||''}`);
+      lines.push(`- ISO: ${m.ISO||''}`);
+      lines.push(`- 셔터: ${m.Shutter||''}`);
+      lines.push(`- 조리개: ${m.Aperture||''}`);
+      lines.push(`- 감마/픽처 프로파일: ${m.Gamma||''}`);
+      lines.push(`- LUT (Look-Up Table — 룩업 테이블): ${m.LUT||''}`);
+      lines.push('');
+      lines.push('## 다음 액션');
+      lines.push(r.nextActions||'');
+      lines.push('');
+      if(r.images?.length){
+        lines.push('## 캡처');
+        r.images.forEach((img,i)=>{ lines.push(`- (${i+1}) ${img.caption||''}`); });
+        lines.push('');
+      }
+      if(r.videos?.A?.name || r.videos?.B?.name){
+        lines.push('## 비교 영상');
+        if(r.videos.A?.name) lines.push(`- A: ${r.videos.A.name} (offset ${r.videos.A.offset||0}s)`);
+        if(r.videos.B?.name) lines.push(`- B: ${r.videos.B.name} (offset ${r.videos.B.offset||0}s)`);
+        lines.push('');
+      }
+      if(r.notes){ lines.push('---'); lines.push(r.notes); }
+      $('#mdPreview').value = lines.join('\n');
+    }
+
+    function downloadBlob(blob, filename){
+      const a = document.createElement('a');
+      a.href = URL.createObjectURL(blob); a.download = filename; a.click();
+      URL.revokeObjectURL(a.href);
+    }
+
+    async function downloadSelfContainedHTML(){
+      const r = getCurrent(); if(!r){ alert('보고서를 선택하세요'); return; }
+      const imgs = await Promise.all((r.images||[]).map(async item=>{
+        const blob = await idb.get(item.blobKey);
+        const dataUrl = await blobToDataURL(blob);
+        return { caption:item.caption||'', dataUrl };
+      }));
+      const html = `<!DOCTYPE html><html lang=ko><meta charset=utf-8><title>${escapeHtml(r.title)}</title>
+        <style>body{font-family:system-ui,-apple-system,Segoe UI,Roboto,Helvetica,Arial;line-height:1.6;padding:24px;max-width:900px;margin:0 auto;background:#fff;color:#111}
+        h1,h2{margin:0.6em 0}img{max-width:100%;border-radius:12px;box-shadow:0 2px 8px rgba(0,0,0,.1)}</style>
+        <h1>${escapeHtml(r.title)}</h1>
+        <p><b>보고 날짜(KST)</b>: ${escapeHtml(r.dateKST||'')}</p>
+        <p><b>프로젝트</b>: ${escapeHtml(r.project||'')} · <b>장소/환경</b>: ${escapeHtml(r.location||'')}</p>
+        <p><b>담당자</b>: ${escapeHtml(r.operator||'')} · <b>장비</b>: ${escapeHtml(r.gear||'')}</p>
+        <h2>체크리스트 (QC: Quality Control — 품질 관리)</h2>
+        <ul>${(r.qc||[]).map(q=>`<li>${q.v?'✅':'⬜️'} ${escapeHtml(q.k)}</li>`).join('')}</ul>
+        <h2>오늘의 요약</h2><pre>${escapeHtml(r.summary||'')}</pre>
+        <h2>이전 진행 사항</h2><pre>${escapeHtml(r.prevWork||'')}</pre>
+        <h2>오늘 수정/시도한 것</h2><pre>${escapeHtml(r.todayChanges||'')}</pre>
+        <h2>새롭게 알게 된 점</h2><pre>${escapeHtml(r.learnings||'')}</pre>
+        <h2>문제 & 해결</h2><pre>${escapeHtml(r.issuesFixes||'')}</pre>
+        <h2>결과 요약</h2><pre>${escapeHtml(r.resultSummary||'')}</pre>
+        <h2>수치/설정 기록</h2>
+        <ul>
+          <li>EV: ${escapeHtml(r.metrics.EV||'')}</li>
+          <li>SNR (Signal-to-Noise Ratio — 신호대잡음비): ${escapeHtml(r.metrics.SNR||'')}</li>
+          <li>WB(White Balance — 화이트 밸런스) ΔCCT: ${escapeHtml(r.metrics.CCT||'')}</li>
+          <li>WB ΔTint: ${escapeHtml(r.metrics.Tint||'')}</li>
+          <li>선예도 MTF50: ${escapeHtml(r.metrics.MTF||'')}</li>
+          <li>ISO: ${escapeHtml(r.metrics.ISO||'')}</li>
+          <li>셔터: ${escapeHtml(r.metrics.Shutter||'')}</li>
+          <li>조리개: ${escapeHtml(r.metrics.Aperture||'')}</li>
+          <li>감마/픽처 프로파일: ${escapeHtml(r.metrics.Gamma||'')}</li>
+          <li>LUT (Look-Up Table — 룩업 테이블): ${escapeHtml(r.metrics.LUT||'')}</li>
+        </ul>
+        <h2>다음 액션</h2><pre>${escapeHtml(r.nextActions||'')}</pre>
+        ${imgs.length? '<h2>캡처</h2>':''}
+        ${imgs.map((im,i)=>`<figure><img src="${im.dataUrl}"><figcaption>(${i+1}) ${escapeHtml(im.caption)}</figcaption></figure>`).join('')}
+      `;
+      downloadBlob(new Blob([html],{type:'text/html'}), `${r.title.replace(/\s+/g,'_')}.html`);
+    }
+
+    // --------- Helpers ---------
+    function escapeHtml(s=''){ return s.replace(/[&<>"]+/g, c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c])); }
+    async function fileToThumb(file, maxW=800, maxH=800){
+      const dataUrl = await blobToDataURL(file);
+      const img = new Image(); img.src = dataUrl; await img.decode();
+      const ratio = Math.min(maxW/img.width, maxH/img.height, 1);
+      const canvas = document.createElement('canvas');
+      canvas.width = Math.round(img.width*ratio); canvas.height = Math.round(img.height*ratio);
+      const ctx = canvas.getContext('2d');
+      ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+      return canvas.toDataURL('image/jpeg', 0.85);
+    }
+    function blobToDataURL(blob){
+      return new Promise(res=>{ const r = new FileReader(); r.onload = ()=>res(r.result); r.readAsDataURL(blob); });
+    }
+
+    // --------- Calendar ---------
+    function renderCalendar(){
+      const container = document.getElementById('calendarContainer');
+      if(!container) return;
+      const now = new Date();
+      const year = now.getFullYear();
+      const month = now.getMonth();
+      const firstDay = new Date(year, month, 1);
+      const lastDay = new Date(year, month+1, 0);
+      let html = '<table class="calendar"><thead><tr>';
+      const days = ['일','월','화','수','목','금','토'];
+      for(const d of days) html += '<th>'+d+'</th>';
+      html += '</tr></thead><tbody><tr>';
+      for(let i=0;i<firstDay.getDay();i++){ html+='<td></td>'; }
+      for(let d=1;d<=lastDay.getDate();d++){
+        const dateStr = year+'-'+String(month+1).padStart(2,'0')+'-'+String(d).padStart(2,'0');
+        const marked = state.reports.some(r=>(r.dateKST||'').startsWith(dateStr));
+        html += '<td class="'+(marked?'marked':'')+'">'+d+'</td>';
+        if((firstDay.getDay()+d)%7===0) html+='</tr><tr>';
+      }
+      html += '</tr></tbody></table>';
+      container.innerHTML = html;
+    }
+
+    // --------- Boot ---------
+    const origSave = saveState;
+    saveState = function(){ origSave(); renderCalendar(); };
+
+    function boot(){
+      loadState();
+      if(!state.reports.length){
+        const r = createEmptyReport();
+        state.reports.push(r); state.currentId = r.id; saveState();
+      }else if(!state.currentId){
+        state.currentId = state.reports[0].id; saveState();
+      }
+      renderReportList();
+      bindInputs();
+      renderEditor();
+      renderCalendar();
+    }
+
+    document.addEventListener('DOMContentLoaded', boot);
+  </script>
+</body>
+</html>

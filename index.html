@@ -22,7 +22,6 @@
     <aside class="w-80 bg-white border-r border-slate-200 flex flex-col">
       <div class="p-4 border-b flex items-center justify-between">
         <h1 class="text-lg font-bold">FR7 일일 보고</h1>
-        <button id="toggleTheme" class="text-xs px-2 py-1 rounded bg-slate-900 text-white">Dark</button>
       </div>
       <div class="p-3 border-b space-y-2">
         <button id="newReportBtn" class="w-full py-2 rounded-xl bg-blue-600 text-white font-semibold hover:bg-blue-700">+ 새 보고서</button>
@@ -41,82 +40,4 @@
         <h2 class="text-sm font-semibold mb-2">달력</h2>
         <div id="calendarContainer"></div>
       </div>
-      <div class="p-3 text-xs text-slate-400 border-t">
-        로컬 저장소(LocalStorage/IndexedDB)에 저장됩니다.
-      </div>
-    </aside>
-
-    <!-- Main: Editor -->
-    <main class="flex-1 overflow-hidden">
-      <!-- Top bar -->
-      <div class="px-5 py-3 bg-white border-b flex items-center gap-3">
-        <input id="reportTitle" class="text-lg font-bold flex-1 outline-none bg-transparent" placeholder="보고서 제목 (예: 2025-08-27 FR7 품질개선 일일 보고)" />
-        <div id="autosaveState" class="text-xs text-slate-500">저장 상태: -</div>
-      </div>
-
-      <!-- Tabs -->
-      <div class="px-5 pt-4 bg-white border-b">
-        <div class="flex gap-2 text-sm">
-          <button data-tab="tab-summary" class="tab-btn px-3 py-2 rounded-t bg-slate-100 font-semibold">요약</button>
-          <button data-tab="tab-process" class="tab-btn px-3 py-2 rounded-t">과정</button>
-          <button data-tab="tab-results" class="tab-btn px-3 py-2 rounded-t">결과·측정</button>
-          <button data-tab="tab-captures" class="tab-btn px-3 py-2 rounded-t">캡처</button>
-          <button data-tab="tab-video" class="tab-btn px-3 py-2 rounded-t">영상 비교</button>
-          <button data-tab="tab-output" class="tab-btn px-3 py-2 rounded-t">산출물</button>
-        </div>
-      </div>
-
-      <!-- 나머지 탭 내용 (summary, process, results, captures, video, output) -->
-      <!-- ... 기존 코드 동일 ... -->
-
-    </main>
-  </div>
-
-  <script>
-    // ... 기존 JS 코드 동일 ...
-
-    function renderCalendar(){
-      const container = document.getElementById('calendarContainer');
-      if(!container) return;
-      const now = new Date();
-      const year = now.getFullYear();
-      const month = now.getMonth();
-      const firstDay = new Date(year, month, 1);
-      const lastDay = new Date(year, month+1, 0);
-      let html = '<table class="calendar"><thead><tr>';
-      const days = ['일','월','화','수','목','금','토'];
-      for(const d of days) html += '<th>'+d+'</th>';
-      html += '</tr></thead><tbody><tr>';
-      for(let i=0;i<firstDay.getDay();i++){ html+='<td></td>'; }
-      for(let d=1;d<=lastDay.getDate();d++){
-        const dateStr = year+'-'+String(month+1).padStart(2,'0')+'-'+String(d).padStart(2,'0');
-        const marked = state.reports.some(r=>(r.dateKST||'').startsWith(dateStr));
-        html += '<td class="'+(marked?'marked':'')+'">'+d+'</td>';
-        if((firstDay.getDay()+d)%7===0) html+='</tr><tr>';
-      }
-      html += '</tr></tbody></table>';
-      container.innerHTML = html;
-    }
-
-    // update calendar after save
-    const origSave = saveState;
-    saveState = function(){ origSave(); renderCalendar(); };
-
-    function boot(){
-      loadState();
-      if(!state.reports.length){
-        const r = createEmptyReport();
-        state.reports.push(r); state.currentId = r.id; saveState();
-      }else if(!state.currentId){
-        state.currentId = state.reports[0].id; saveState();
-      }
-      renderReportList();
-      bindInputs();
-      renderEditor();
-      renderCalendar();
-    }
-
-    document.addEventListener('DOMContentLoaded', boot);
-  </script>
-</body>
-</html>
+      <div class="p-3 text-xs text-slate-400 border-t"

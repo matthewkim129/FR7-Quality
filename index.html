@@ -16,6 +16,9 @@
     .ratio-16x9 { aspect-ratio: 16 / 9; }
     .cmp-box { background:#000; }
     .cmp-box img { width:100%; height:100%; object-fit:contain; }
+    .stepper { display:flex; align-items:center; gap:6px; }
+    .btn-step { padding:2px 8px; border-radius:6px; border:1px solid #cbd5e1; font-size:12px; background:#f8fafc; }
+    .value-pill { min-width:44px; text-align:center; font-variant-numeric: tabular-nums; }
   </style>
 </head>
 <body class="h-full bg-slate-50 text-slate-900">
@@ -82,57 +85,62 @@
               placeholder="이전 진행 사항 / 오늘 수정·시도 / 새롭게 알게 된 점 / 문제 & 해결"></textarea>
           </div>
 
-          <!-- 결과·측정 (요청 반영) -->
+          <!-- 결과·측정 -->
           <div class="bg-white rounded-xl shadow p-4">
             <h2 class="font-semibold mb-3">결과·측정</h2>
             <div class="grid grid-cols-2 gap-3 text-sm">
+              <!-- F -->
               <label class="space-y-1"><span class="text-slate-600">F (조리개)</span>
                 <input id="fAperture" type="text" class="w-full rounded border p-2" placeholder="예: F4.0" />
               </label>
 
+              <!-- ISO (역순) -->
               <label class="space-y-1"><span class="text-slate-600">ISO</span>
                 <select id="iso" class="w-full rounded border p-2">
                   <option value="">선택</option>
-                  <option>320</option><option>400</option><option>500</option><option>640</option>
-                  <option>800</option><option>1000</option><option>1250</option><option>1600</option>
-                  <option>2000</option><option>2500</option><option>3200</option><option>4000</option>
-                  <option>5000</option><option>6400</option><option>8000</option><option>10000</option>
-                  <option>12800</option><option>16000</option><option>20000</option><option>25600</option>
+                  <option>25600</option><option>20000</option><option>16000</option><option>12800</option>
+                  <option>10000</option><option>8000</option><option>6400</option><option>5000</option>
+                  <option>4000</option><option>3200</option><option>2500</option><option>2000</option>
+                  <option>1600</option><option>1250</option><option>1000</option><option>800</option>
+                  <option>640</option><option>500</option><option>400</option><option>320</option>
                 </select>
               </label>
 
+              <!-- WB + stepper -->
               <label class="space-y-1"><span class="text-slate-600">WB (화이트밸런스)</span>
-                <div class="space-y-1">
-                  <div class="flex items-center justify-between text-xs text-slate-600">
-                    <span>K</span><span id="valWB" class="font-mono text-slate-700">5600</span>
+                <div class="space-y-2">
+                  <div class="stepper">
+                    <button id="wbMinus" class="btn-step" type="button">−100</button>
+                    <span class="value-pill text-slate-700 font-mono" id="valWB">5600</span>
+                    <button id="wbPlus" class="btn-step" type="button">＋100</button>
                   </div>
                   <input id="wb" type="range" min="2800" max="8000" step="100" value="5600" class="w-full">
                 </div>
               </label>
 
+              <!-- Tint + stepper -->
               <label class="space-y-1"><span class="text-slate-600">Tint</span>
-                <div class="space-y-1">
-                  <div class="flex items-center justify-between text-xs text-slate-600">
-                    <span>-</span><span id="valTint" class="font-mono text-slate-700">0</span>
+                <div class="space-y-2">
+                  <div class="stepper">
+                    <button id="tintMinus" class="btn-step" type="button">−1</button>
+                    <span class="value-pill text-slate-700 font-mono" id="valTint">0</span>
+                    <button id="tintPlus" class="btn-step" type="button">＋1</button>
                   </div>
                   <input id="tint" type="range" min="-99" max="99" step="1" value="0" class="w-full">
                 </div>
               </label>
 
+              <!-- Shutter (드롭다운) -->
               <label class="space-y-1"><span class="text-slate-600">셔터</span>
-                <input id="shutter" type="text" class="w-full rounded border p-2" placeholder="예: 1/100 또는 180°" />
-              </label>
-
-              <label class="space-y-1"><span class="text-slate-600">장면파일</span>
-                <select id="sceneFile" class="w-full rounded border p-2">
+                <select id="shutter" class="w-full rounded border p-2">
                   <option value="">선택</option>
-                  <option value="S-Cinetone">S-Cinetone</option>
-                  <option value="Standard">Standard</option>
-                  <option value="Still">Still</option>
-                  <option value="ITU709">ITU709</option>
+                  <option>1/30</option><option>1/40</option><option>1/50</option><option>1/60</option>
+                  <option>1/100</option><option>1/120</option><option>1/125</option><option>1/250</option>
+                  <option>1/500</option><option>1/1000</option>
                 </select>
               </label>
 
+              <!-- FPS (먼저) -->
               <label class="space-y-1"><span class="text-slate-600">FPS</span>
                 <select id="fps" class="w-full rounded border p-2">
                   <option value="">선택</option>
@@ -142,27 +150,53 @@
                   <option>60</option>
                 </select>
               </label>
+
+              <!-- Scene (나중) -->
+              <label class="space-y-1"><span class="text-slate-600">장면파일</span>
+                <select id="sceneFile" class="w-full rounded border p-2">
+                  <option value="">선택</option>
+                  <option value="S-Cinetone">S-Cinetone</option>
+                  <option value="Standard">Standard</option>
+                  <option value="Still">Still</option>
+                  <option value="ITU709">ITU709</option>
+                </select>
+              </label>
             </div>
 
-            <!-- 블랙 레벨 슬라이더 -->
+            <!-- 블랙 레벨 슬라이더 + stepper -->
             <div class="mt-4 grid grid-cols-1 gap-4">
               <div>
-                <label class="text-sm text-slate-600 flex items-center justify-between">
-                  <span>Master Black</span><span id="valMasterBlack" class="font-mono text-slate-700">0</span>
-                </label>
-                <input id="masterBlack" type="range" min="-99" max="99" step="1" value="0" class="w-full">
+                <div class="flex items-center justify-between">
+                  <span class="text-sm text-slate-600">Master Black</span>
+                  <div class="stepper">
+                    <button id="mbMinus" class="btn-step" type="button">−1</button>
+                    <span id="valMasterBlack" class="value-pill text-slate-700 font-mono">0</span>
+                    <button id="mbPlus" class="btn-step" type="button">＋1</button>
+                  </div>
+                </div>
+                <input id="masterBlack" type="range" min="-99" max="99" step="1" value="0" class="w-full mt-1">
               </div>
               <div>
-                <label class="text-sm text-slate-600 flex items-center justify-between">
-                  <span>R Black</span><span id="valRBlack" class="font-mono text-slate-700">0</span>
-                </label>
-                <input id="rBlack" type="range" min="-99" max="99" step="1" value="0" class="w-full">
+                <div class="flex items-center justify-between">
+                  <span class="text-sm text-slate-600">R Black</span>
+                  <div class="stepper">
+                    <button id="rbMinus" class="btn-step" type="button">−1</button>
+                    <span id="valRBlack" class="value-pill text-slate-700 font-mono">0</span>
+                    <button id="rbPlus" class="btn-step" type="button">＋1</button>
+                  </div>
+                </div>
+                <input id="rBlack" type="range" min="-99" max="99" step="1" value="0" class="w-full mt-1">
               </div>
               <div>
-                <label class="text-sm text-slate-600 flex items-center justify-between">
-                  <span>B Black</span><span id="valBBlack" class="font-mono text-slate-700">0</span>
-                </label>
-                <input id="bBlack" type="range" min="-99" max="99" step="1" value="0" class="w-full">
+                <div class="flex items-center justify-between">
+                  <span class="text-sm text-slate-600">B Black</span>
+                  <div class="stepper">
+                    <button id="bbMinus" class="btn-step" type="button">−1</button>
+                    <span id="valBBlack" class="value-pill text-slate-700 font-mono">0</span>
+                    <button id="bbPlus" class="btn-step" type="button">＋1</button>
+                  </div>
+                </div>
+                <input id="bBlack" type="range" min="-99" max="99" step="1" value="0" class="w-full mt-1">
               </div>
             </div>
 
@@ -173,7 +207,7 @@
             </div>
           </div>
 
-          <!-- 이미지 비교 (좌우, 16:9) -->
+          <!-- 이미지 비교 (A/B 추가만) -->
           <div class="bg-white rounded-xl shadow p-4 lg:col-span-2">
             <div class="flex items-center justify-between mb-3">
               <h2 class="font-semibold">이미지 비교 (A / B)</h2>
@@ -211,7 +245,7 @@
     };
 
     // ========= State =========
-    const LS_KEY = 'fr7-daily-reports-v7';
+    const LS_KEY = 'fr7-daily-reports-v8';
     let state = { reports: [], currentId: null };
     function loadState(){ try{ const raw = localStorage.getItem(LS_KEY); if(raw){ state = JSON.parse(raw); } }catch(e){ console.warn('loadState error', e); } }
     function saveState(){ localStorage.setItem(LS_KEY, JSON.stringify(state)); const s=$('#autosaveState'); if(s) s.textContent = '저장 상태: ' + new Date().toLocaleTimeString(); }
@@ -272,23 +306,18 @@
 
     function renderEditor(){
       const r = getCurrent(); if(!r) return;
-
-      // Fill title & summary
       $('#reportTitle').value = r.title||'';
       $('#summary').value = r.summary||'';
-
-      // Process
       $('#process').value = r.process||'';
 
-      // Fields
       const f = r.fields||{};
       setVal('fAperture', f.fAperture);
       setVal('iso', f.iso);
       setVal('wb', f.wb); text('#valWB', f.wb);
       setVal('tint', f.tint); text('#valTint', f.tint);
       setVal('shutter', f.shutter);
-      setVal('sceneFile', f.sceneFile);
       setVal('fps', f.fps);
+      setVal('sceneFile', f.sceneFile);
       setVal('masterBlack', f.masterBlack??0); text('#valMasterBlack', f.masterBlack??0);
       setVal('rBlack', f.rBlack??0);           text('#valRBlack',    f.rBlack??0);
       setVal('bBlack', f.bBlack??0);           text('#valBBlack',    f.bBlack??0);
@@ -296,13 +325,12 @@
 
       const dd = $('#detailDone'); if(dd) dd.checked = !!(r.flags&&r.flags.detailDone);
 
-      // Compare
       loadCompare('A'); loadCompare('B');
     }
     function setVal(id, val){ const el=document.getElementById(id); if(el!=null) el.value = val ?? ''; }
     function text(sel, v){ const el=$(sel); if(el) el.textContent = String(v); }
 
-    // ========= Compare (Image A/B) =========
+    // ========= Compare =========
     async function loadCompare(which){
       const r = getCurrent(); if(!r) return;
       const c = r.compare[which]; const imgEl = which==='A'? $('#cmpA'): $('#cmpB'); const names = $('#cmpNames');
@@ -347,15 +375,22 @@
       };
       bind('fAperture','fAperture');
       bind('iso','iso');               // select
-      bind('wb','wb',true,'valWB');    // range + display
-      bind('tint','tint',true,'valTint'); // range + display
-      bind('shutter','shutter');
-      bind('sceneFile','sceneFile');   // select
+      bind('wb','wb',true,'valWB');    // range
+      bind('tint','tint',true,'valTint');
+      bind('shutter','shutter');       // select
       bind('fps','fps');               // select
+      bind('sceneFile','sceneFile');   // select
       bind('masterBlack','masterBlack',true,'valMasterBlack');
       bind('rBlack','rBlack',true,'valRBlack');
       bind('bBlack','bBlack',true,'valBBlack');
       bind('memo','memo');
+
+      // Stepper buttons for ranges
+      attachStepper('wb', 100, 2800, 8000, 'valWB');
+      attachStepper('tint', 1, -99, 99, 'valTint');
+      attachStepper('masterBlack', 1, -99, 99, 'valMasterBlack', 'mbMinus', 'mbPlus');
+      attachStepper('rBlack', 1, -99, 99, 'valRBlack', 'rbMinus', 'rbPlus');
+      attachStepper('bBlack', 1, -99, 99, 'valBBlack', 'bbMinus', 'bbPlus');
 
       // Compare inputs
       $('#cmpAInput')?.addEventListener('change', async (e)=>{ const f=e.target.files?.[0]; if(!f) return; const r=getCurrent(); if(!r) return; const key='b_'+Math.random().toString(36).slice(2); await idb.put(key, f); r.compare.A={ name:f.name, blobKey:key }; saveState(); loadCompare('A'); if(r.flags?.detailDone) autoSummarize(); });
@@ -365,7 +400,24 @@
       $('#newReportBtn')?.addEventListener('click', ()=>{ const r=createEmptyReport(); state.reports.push(r); setCurrent(r.id); });
     }
 
-    // ======== Auto Summarizer (세부 기반) ========
+    // ======== Stepper Helper ========
+    function attachStepper(id, step, min, max, displayId, minusId, plusId){
+      const input = document.getElementById(id);
+      if(!input) return;
+      const minus = document.getElementById(minusId || (id+'Minus'));
+      const plus  = document.getElementById(plusId  || (id+'Plus'));
+      const disp  = document.getElementById(displayId);
+      function clamp(v){ return Math.max(min, Math.min(max, v)); }
+      function set(v){
+        input.value = clamp(v);
+        if(disp) disp.textContent = String(input.value);
+        input.dispatchEvent(new Event('input', { bubbles:true }));
+      }
+      minus?.addEventListener('click', ()=> set(Number(input.value||0) - step));
+      plus ?.addEventListener('click', ()=> set(Number(input.value||0) + step));
+    }
+
+    // ======== Auto Summarizer ========
     function autoSummarize(focusSummaryTab=false){
       const r=getCurrent(); if(!r) return;
       const f=r.fields||{};
@@ -376,7 +428,7 @@
       const add=(k,v)=>{ if(v!=='' && v!=null) parts.push(`${k}=${v}`); };
       add('F', f.fAperture); add('ISO', f.iso);
       add('WB', f.wb); add('Tint', f.tint);
-      add('셔터', f.shutter); add('장면', f.sceneFile); add('FPS', f.fps);
+      add('셔터', f.shutter); add('FPS', f.fps); add('장면', f.sceneFile);
       if(parts.length) lines.push('측정: ' + parts.join(', '));
 
       if(Number.isFinite(f.masterBlack)||Number.isFinite(f.rBlack)||Number.isFinite(f.bBlack)){

@@ -63,8 +63,23 @@
         </div>
       </div>
 
-      <!-- 요약 -->
+      <!-- 요약 (비교 이미지 먼저, 그 다음 요약) -->
       <section id="tab-summary" class="tab-pane p-5 overflow-y-auto thin-scroll h-[calc(100vh-136px)]">
+        <!-- 비교 이미지 프리뷰 -->
+        <div class="bg-white rounded-xl shadow p-4 mb-4">
+          <h2 class="font-semibold mb-3">비교 (A / B)</h2>
+          <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div class="cmp-box ratio-16x9 rounded-lg overflow-hidden flex items-center justify-center">
+              <img id="sumCmpA" alt="요약 프리뷰 A" />
+            </div>
+            <div class="cmp-box ratio-16x9 rounded-lg overflow-hidden flex items-center justify-center">
+              <img id="sumCmpB" alt="요약 프리뷰 B" />
+            </div>
+          </div>
+          <div class="mt-2 text-xs text-slate-500" id="sumCmpNames"></div>
+        </div>
+
+        <!-- 오늘의 요약 -->
         <div class="bg-white rounded-xl shadow p-4">
           <div class="flex items-center justify-between mb-2">
             <h2 class="font-semibold">오늘의 요약</h2>
@@ -88,7 +103,7 @@
             <p class="text-xs text-slate-500 mt-2">※ 과거 날짜의 보고서를 작성할 때 이 날짜를 선택하세요. (달력 표시에 반영됩니다)</p>
           </div>
 
-          <!-- 과정 (요청대로 작성일자 아래로 이동) -->
+          <!-- 과정 -->
           <div class="bg-white rounded-xl shadow p-4 lg:col-span-2">
             <div class="flex items-center justify-between mb-2">
               <h2 class="font-semibold">과정</h2>
@@ -100,16 +115,14 @@
               placeholder="이전 진행 사항 / 오늘 수정·시도 / 새롭게 알게 된 점 / 문제 & 해결"></textarea>
           </div>
 
-          <!-- 결과·측정 (이전 버전에서 유지) -->
+          <!-- 결과·측정 -->
           <div class="bg-white rounded-xl shadow p-4">
             <h2 class="font-semibold mb-3">결과·측정</h2>
             <div class="grid grid-cols-2 gap-3 text-sm">
-              <!-- F -->
               <label class="space-y-1"><span class="text-slate-600">F (조리개)</span>
                 <input id="fAperture" type="text" class="w-full rounded border p-2" placeholder="예: F4.0" />
               </label>
 
-              <!-- ISO (역순) -->
               <label class="space-y-1"><span class="text-slate-600">ISO</span>
                 <select id="iso" class="w-full rounded border p-2">
                   <option value="">선택</option>
@@ -155,7 +168,7 @@
                 </select>
               </label>
 
-              <!-- FPS (먼저) -->
+              <!-- FPS -->
               <label class="space-y-1"><span class="text-slate-600">FPS</span>
                 <select id="fps" class="w-full rounded border p-2">
                   <option value="">선택</option>
@@ -166,7 +179,7 @@
                 </select>
               </label>
 
-              <!-- Scene (나중) -->
+              <!-- Scene -->
               <label class="space-y-1"><span class="text-slate-600">장면파일</span>
                 <select id="sceneFile" class="w-full rounded border p-2">
                   <option value="">선택</option>
@@ -178,7 +191,7 @@
               </label>
             </div>
 
-            <!-- 블랙 레벨 슬라이더 + stepper -->
+            <!-- 블랙 레벨 + stepper -->
             <div class="mt-4 grid grid-cols-1 gap-4">
               <div>
                 <div class="flex items-center justify-between">
@@ -264,7 +277,7 @@
     const LS_KEY = 'fr7-daily-reports-v9';
     let state = { reports: [], currentId: null };
 
-    // calendar view state (현재 보고용 달력의 연/월)
+    // calendar view state
     let calView = (()=>{ const t = new Date(); return { y: t.getFullYear(), m: t.getMonth() }; })();
 
     function loadState(){ try{ const raw = localStorage.getItem(LS_KEY); if(raw){ state = JSON.parse(raw); } }catch(e){ console.warn('loadState error', e); } }
@@ -289,9 +302,7 @@
       return {
         id,
         title: KST.todayISO() + ' FR7 품질개선 일일 보고',
-        // reportDate: 달력에 표시/검색용(YYYY-MM-DD), 기본 오늘
         reportDate: KST.todayISO(),
-        // dateKST는 과거 호환(표시용), 없으면 reportDate를 사용
         dateKST: KST.todayISO(),
         summary: '',
         process: '',
@@ -356,19 +367,29 @@
 
       const dd = $('#detailDone'); if(dd) dd.checked = !!(r.flags&&r.flags.detailDone);
 
+      // Compare images for BOTH detail and summary preview
       loadCompare('A'); loadCompare('B');
     }
     function setVal(id, val){ const el=document.getElementById(id); if(el!=null) el.value = val ?? ''; }
     function text(sel, v){ const el=$(sel); if(el) el.textContent = String(v); }
 
-    // ========= Compare =========
+    // ========= Compare (update detail + summary) =========
     async function loadCompare(which){
       const r = getCurrent(); if(!r) return;
-      const c = r.compare[which]; const imgEl = which==='A'? $('#cmpA'): $('#cmpB'); const names = $('#cmpNames');
-      if(!imgEl) return;
-      imgEl.src = '';
-      if(c && c.blobKey){ const blob = await idb.get(c.blobKey); if(blob){ imgEl.src = URL.createObjectURL(blob); } }
-      if(names){ names.textContent = `${r.compare.A?.name||''}  |  ${r.compare.B?.name||''}`.trim(); }
+      const c = r.compare[which];
+
+      // Detail images
+      const imgEl = which==='A'? $('#cmpA'): $('#cmpB');
+      if(imgEl){ imgEl.src = ''; if(c && c.blobKey){ const blob = await idb.get(c.blobKey); if(blob){ imgEl.src = URL.createObjectURL(blob); } } }
+
+      // Summary preview images
+      const sImgEl = which==='A'? $('#sumCmpA'): $('#sumCmpB');
+      if(sImgEl){ sImgEl.src=''; if(c && c.blobKey){ const blob = await idb.get(c.blobKey); if(blob){ sImgEl.src = URL.createObjectURL(blob); } } }
+
+      // Names under both sections
+      const names = `${r.compare.A?.name||''}  |  ${r.compare.B?.name||''}`.trim();
+      const dNames = $('#cmpNames'); if(dNames) dNames.textContent = names;
+      const sNames = $('#sumCmpNames'); if(sNames) sNames.textContent = names;
     }
 
     // ========= Events =========
@@ -398,14 +419,13 @@
         const r=getCurrent(); if(!r) return;
         const v = $('#reportDate').value;
         r.reportDate = v;
-        // title 자동 업데이트는 유지(사용자 입력을 존중해야 하므로 자동 변경은 하지 않음)
         saveState(); renderReportList(); renderCalendar();
       });
 
       // Process
       $('#process')?.addEventListener('input', ()=>{ const r=getCurrent(); if(!r) return; r.process=$('#process').value; saveState(); if(r.flags?.detailDone) autoSummarize(); });
 
-      // Fields (text/select/range)
+      // Fields
       const bind=(id,key,isRange=false,dispId=null)=>{ const el=$('#'+id); if(!el) return;
         el.addEventListener('input', ()=>{ const r=getCurrent(); if(!r) return; r.fields=r.fields||{};
           r.fields[key]= isRange ? (Number(el.value)) : el.value;
@@ -425,14 +445,14 @@
       bind('bBlack','bBlack',true,'valBBlack');
       bind('memo','memo');
 
-      // Stepper buttons for ranges
+      // Stepper buttons
       attachStepper('wb', 100, 2800, 8000, 'valWB');
       attachStepper('tint', 1, -99, 99, 'valTint');
       attachStepper('masterBlack', 1, -99, 99, 'valMasterBlack', 'mbMinus', 'mbPlus');
       attachStepper('rBlack', 1, -99, 99, 'valRBlack', 'rbMinus', 'rbPlus');
       attachStepper('bBlack', 1, -99, 99, 'valBBlack', 'bbMinus', 'bbPlus');
 
-      // Compare inputs
+      // Compare inputs (자동으로 요약 프리뷰도 갱신)
       $('#cmpAInput')?.addEventListener('change', async (e)=>{ const f=e.target.files?.[0]; if(!f) return; const r=getCurrent(); if(!r) return; const key='b_'+Math.random().toString(36).slice(2); await idb.put(key, f); r.compare.A={ name:f.name, blobKey:key }; saveState(); loadCompare('A'); if(r.flags?.detailDone) autoSummarize(); });
       $('#cmpBInput')?.addEventListener('change', async (e)=>{ const f=e.target.files?.[0]; if(!f) return; const r=getCurrent(); if(!r) return; const key='b_'+Math.random().toString(36).slice(2); await idb.put(key, f); r.compare.B={ name:f.name, blobKey:key }; saveState(); loadCompare('B'); if(r.flags?.detailDone) autoSummarize(); });
 
@@ -486,7 +506,6 @@
 
     // ========= Calendar (with navigation) =========
     function setCurrentByDate(dateStr){
-      // reportDate 기준으로 선택
       const candidates = state.reports.filter(r => (r.reportDate||'').startsWith(dateStr));
       if(!candidates.length) return;
       candidates.sort((a,b)=> (b.reportDate||'').localeCompare(a.reportDate||''));

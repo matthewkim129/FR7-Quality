@@ -33,10 +33,17 @@
       </div>
 
       <div id="reportList" class="flex-1 overflow-y-auto thin-scroll divide-y"></div>
-      <div class="p-3 border-t">
-        <h2 class="text-sm font-semibold mb-2">달력</h2>
+
+      <!-- Calendar with navigation -->
+      <div class="p-3 border-t space-y-2">
+        <div class="flex items-center justify-between">
+          <button id="calPrev" class="px-2 py-1 rounded bg-slate-100 text-sm">◀︎ 전월</button>
+          <div id="calLabel" class="text-sm font-semibold">-</div>
+          <button id="calNext" class="px-2 py-1 rounded bg-slate-100 text-sm">다음월 ▶︎</button>
+        </div>
         <div id="calendarContainer"></div>
       </div>
+
       <div class="p-3 text-xs text-slate-400 border-t">로컬 저장소(LocalStorage/IndexedDB)에 저장됩니다.</div>
     </aside>
 
@@ -73,8 +80,16 @@
       <!-- 세부 -->
       <section id="tab-detail" class="tab-pane hidden p-5 overflow-y-auto thin-scroll h-[calc(100vh-136px)]">
         <div class="grid grid-cols-1 lg:grid-cols-2 gap-4">
-          <!-- 과정 -->
-          <div class="bg-white rounded-xl shadow p-4">
+
+          <!-- 보고서 작성 일자 -->
+          <div class="bg-white rounded-xl shadow p-4 lg:col-span-2">
+            <h2 class="font-semibold mb-3">보고서 작성 일자</h2>
+            <input id="reportDate" type="date" class="rounded border p-2 text-sm" />
+            <p class="text-xs text-slate-500 mt-2">※ 과거 날짜의 보고서를 작성할 때 이 날짜를 선택하세요. (달력 표시에 반영됩니다)</p>
+          </div>
+
+          <!-- 과정 (요청대로 작성일자 아래로 이동) -->
+          <div class="bg-white rounded-xl shadow p-4 lg:col-span-2">
             <div class="flex items-center justify-between mb-2">
               <h2 class="font-semibold">과정</h2>
               <label class="text-sm flex items-center gap-2">
@@ -85,7 +100,7 @@
               placeholder="이전 진행 사항 / 오늘 수정·시도 / 새롭게 알게 된 점 / 문제 & 해결"></textarea>
           </div>
 
-          <!-- 결과·측정 -->
+          <!-- 결과·측정 (이전 버전에서 유지) -->
           <div class="bg-white rounded-xl shadow p-4">
             <h2 class="font-semibold mb-3">결과·측정</h2>
             <div class="grid grid-cols-2 gap-3 text-sm">
@@ -243,10 +258,15 @@
       nowString(){ return new Date().toLocaleString('ko-KR', { timeZone: 'Asia/Seoul', hour12: false }); },
       todayISO(){ const d = new Date(new Date().toLocaleString('en-US', { timeZone: 'Asia/Seoul' })); return d.toISOString().slice(0,10); }
     };
+    function pad2(n){ return String(n).padStart(2,'0'); }
 
     // ========= State =========
-    const LS_KEY = 'fr7-daily-reports-v8';
+    const LS_KEY = 'fr7-daily-reports-v9';
     let state = { reports: [], currentId: null };
+
+    // calendar view state (현재 보고용 달력의 연/월)
+    let calView = (()=>{ const t = new Date(); return { y: t.getFullYear(), m: t.getMonth() }; })();
+
     function loadState(){ try{ const raw = localStorage.getItem(LS_KEY); if(raw){ state = JSON.parse(raw); } }catch(e){ console.warn('loadState error', e); } }
     function saveState(){ localStorage.setItem(LS_KEY, JSON.stringify(state)); const s=$('#autosaveState'); if(s) s.textContent = '저장 상태: ' + new Date().toLocaleTimeString(); }
 
@@ -269,7 +289,10 @@
       return {
         id,
         title: KST.todayISO() + ' FR7 품질개선 일일 보고',
-        dateKST: KST.todayISO(),    // 달력 표시용 (YYYY-MM-DD로 시작)
+        // reportDate: 달력에 표시/검색용(YYYY-MM-DD), 기본 오늘
+        reportDate: KST.todayISO(),
+        // dateKST는 과거 호환(표시용), 없으면 reportDate를 사용
+        dateKST: KST.todayISO(),
         summary: '',
         process: '',
         fields: {
@@ -288,17 +311,18 @@
       };
     }
     function getCurrent(){ return state.reports.find(r=>r.id===state.currentId) || null; }
-    function setCurrent(id){ state.currentId = id; saveState(); renderReportList(); renderEditor(); }
+    function setCurrent(id){ state.currentId = id; saveState(); renderReportList(); renderEditor(); renderCalendar(); }
 
     // ========= Rendering =========
     function renderReportList(){
       const box = $('#reportList'); if(!box) return; box.innerHTML = '';
-      const sorted = [...state.reports].sort((a,b)=> (b.dateKST||'').localeCompare(a.dateKST||''));
+      const sorted = [...state.reports].sort((a,b)=> (b.reportDate||'').localeCompare(a.reportDate||''));
       for(const r of sorted){
         const isActive = r.id===state.currentId;
+        const dateTxt = r.reportDate || r.dateKST || '';
         const item = document.createElement('button');
         item.className = 'w-full text-left p-3 hover:bg-slate-50 ' + (isActive?'bg-blue-50':'');
-        item.innerHTML = `<div class="font-semibold truncate">${escapeHtml(r.title||'(제목 없음)')}</div><div class="text-xs text-slate-500">${escapeHtml(r.dateKST||'')}</div>`;
+        item.innerHTML = `<div class="font-semibold truncate">${escapeHtml(r.title||'(제목 없음)')}</div><div class="text-xs text-slate-500">${escapeHtml(dateTxt)}</div>`;
         item.onclick = ()=> setCurrent(r.id);
         box.appendChild(item);
       }
@@ -308,8 +332,15 @@
       const r = getCurrent(); if(!r) return;
       $('#reportTitle').value = r.title||'';
       $('#summary').value = r.summary||'';
+
+      // Report date
+      const rd = r.reportDate || KST.todayISO();
+      const rdEl = $('#reportDate'); if(rdEl) rdEl.value = rd;
+
+      // Process
       $('#process').value = r.process||'';
 
+      // Fields
       const f = r.fields||{};
       setVal('fAperture', f.fAperture);
       setVal('iso', f.iso);
@@ -362,6 +393,15 @@
       $('#autoSummaryBtn')?.addEventListener('click', ()=> autoSummarize(true));
       const done=$('#detailDone'); if(done) done.addEventListener('change', ()=>{ const r=getCurrent(); if(!r) return; r.flags.detailDone = done.checked; saveState(); if(done.checked) autoSummarize(true); });
 
+      // Report Date
+      $('#reportDate')?.addEventListener('change', ()=>{
+        const r=getCurrent(); if(!r) return;
+        const v = $('#reportDate').value;
+        r.reportDate = v;
+        // title 자동 업데이트는 유지(사용자 입력을 존중해야 하므로 자동 변경은 하지 않음)
+        saveState(); renderReportList(); renderCalendar();
+      });
+
       // Process
       $('#process')?.addEventListener('input', ()=>{ const r=getCurrent(); if(!r) return; r.process=$('#process').value; saveState(); if(r.flags?.detailDone) autoSummarize(); });
 
@@ -374,12 +414,12 @@
         });
       };
       bind('fAperture','fAperture');
-      bind('iso','iso');               // select
-      bind('wb','wb',true,'valWB');    // range
+      bind('iso','iso');
+      bind('wb','wb',true,'valWB');
       bind('tint','tint',true,'valTint');
-      bind('shutter','shutter');       // select
-      bind('fps','fps');               // select
-      bind('sceneFile','sceneFile');   // select
+      bind('shutter','shutter');
+      bind('fps','fps');
+      bind('sceneFile','sceneFile');
       bind('masterBlack','masterBlack',true,'valMasterBlack');
       bind('rBlack','rBlack',true,'valRBlack');
       bind('bBlack','bBlack',true,'valBBlack');
@@ -444,25 +484,39 @@
     }
     function compact(txt,max=140){ txt=String(txt).trim().replace(/\s+/g,' '); if(txt.length<=max) return txt; return txt.slice(0,max-1)+'…'; }
 
-    // ========= Calendar =========
+    // ========= Calendar (with navigation) =========
     function setCurrentByDate(dateStr){
-      const candidates = state.reports.filter(r => (r.dateKST||'').startsWith(dateStr));
+      // reportDate 기준으로 선택
+      const candidates = state.reports.filter(r => (r.reportDate||'').startsWith(dateStr));
       if(!candidates.length) return;
-      candidates.sort((a,b)=> (b.dateKST||'').localeCompare(a.dateKST||''));
+      candidates.sort((a,b)=> (b.reportDate||'').localeCompare(a.reportDate||''));
       const pick = candidates[0];
       state.currentId = pick.id; saveState(); renderReportList(); renderEditor();
     }
+    function changeMonth(delta){
+      let y = calView.y, m = calView.m + delta;
+      if(m < 0){ m = 11; y -= 1; }
+      if(m > 11){ m = 0;  y += 1; }
+      calView = { y, m };
+      renderCalendar();
+    }
     function renderCalendar(){
       const container=$('#calendarContainer'); if(!container) return;
-      const now=new Date(); const year=now.getFullYear(); const month=now.getMonth();
-      const firstDay=new Date(year,month,1); const lastDay=new Date(year,month+1,0);
+      const year=calView.y, month=calView.m; // month: 0-11
+      const firstDay=new Date(year,month,1);
+      const lastDay=new Date(year,month+1,0);
+
+      // Label
+      const label = `${year}년 ${month+1}월`;
+      const lblEl = $('#calLabel'); if(lblEl) lblEl.textContent = label;
+
       let html='<table class="calendar"><thead><tr>';
       const days=['일','월','화','수','목','금','토']; for(const d of days) html+='<th>'+d+'</th>';
       html+='</tr></thead><tbody><tr>';
       for(let i=0;i<firstDay.getDay();i++){ html+='<td></td>'; }
       for(let d=1;d<=lastDay.getDate();d++){
-        const dateStr=year+'-'+String(month+1).padStart(2,'0')+'-'+String(d).padStart(2,'0');
-        const marked=state.reports.some(r=>(r.dateKST||'').startsWith(dateStr));
+        const dateStr=year+'-'+pad2(month+1)+'-'+pad2(d);
+        const marked=state.reports.some(r=> (r.reportDate||'').startsWith(dateStr) || (r.dateKST||'').startsWith(dateStr));
         html+=`<td class="date-cell ${marked?'marked':''}" data-date="${dateStr}">${d}</td>`;
         if((firstDay.getDay()+d)%7===0) html+='</tr><tr>';
       }
@@ -483,6 +537,10 @@
       if(!state.reports.length){ const r=createEmptyReport(); state.reports.push(r); state.currentId=r.id; saveState(); }
       else if(!state.currentId){ state.currentId=state.reports[0].id; saveState(); }
       renderReportList(); bindInputs(); renderEditor(); renderCalendar();
+
+      // calendar navigation buttons
+      $('#calPrev')?.addEventListener('click', ()=> changeMonth(-1));
+      $('#calNext')?.addEventListener('click', ()=> changeMonth(+1));
     }
     document.addEventListener('DOMContentLoaded', boot);
   </script>

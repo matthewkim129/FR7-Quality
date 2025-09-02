@@ -19,9 +19,18 @@
     .stepper { display:flex; align-items:center; gap:6px; }
     .btn-step { padding:2px 8px; border-radius:6px; border:1px solid #cbd5e1; font-size:12px; background:#f8fafc; }
     .value-pill { min-width:44px; text-align:center; font-variant-numeric: tabular-nums; }
+    /* 🚀 로딩 오버레이 스타일 추가 */
+    #loading-overlay { position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(255,255,255,0.8); z-index: 9999; display: flex; align-items: center; justify-content: center; backdrop-filter: blur(4px); }
   </style>
 </head>
 <body class="h-full bg-slate-50 text-slate-900">
+  <div id="loading-overlay">
+    <div class="text-center">
+      <div class="font-bold text-lg">🚀 데이터를 불러오는 중...</div>
+      <div class="text-sm text-slate-600 mt-1">잠시만 기다려주세요.</div>
+    </div>
+  </div>
+
   <div id="app" class="h-full flex">
     <aside class="w-80 bg-white border-r border-slate-200 flex flex-col">
       <div class="p-4 border-b flex items-center justify-between">
@@ -270,22 +279,21 @@
     }
 
     async function loadState() {
-      $('#autosaveState').textContent = '데이터 불러오는 중...';
+      const overlay = $('#loading-overlay');
       try {
         const response = await fetch(WEB_APP_URL);
         if (!response.ok) throw new Error(`Network response was not ok. Status: ${response.status}`);
         const data = await response.json();
         if (data && data.reports) {
           state = data;
-          console.log('클라우드에서 데이터 로드 성공');
-          $('#autosaveState').textContent = '데이터 로드 완료';
         } else {
            throw new Error('서버로부터 받은 데이터 형식이 올바르지 않습니다.');
         }
       } catch (e) {
-        console.warn('loadState error', e);
-        $('#autosaveState').textContent = '데이터 로드 실패';
-        state = { reports: [], currentId: null };
+        console.error('loadState error', e);
+        // 🚀 로딩 실패 시 에러 메시지 표시
+        if (overlay) overlay.innerHTML = `<div class="text-center"><div class="font-bold text-lg text-red-600">❌ 데이터 로드 실패!</div><div class="text-sm text-slate-600 mt-1">Apps Script를 다시 배포하거나 콘솔(F12)을 확인하세요.</div></div>`;
+        throw e; // 에러를 다시 던져서 boot 함수에서 잡도록 함
       }
     }
 
@@ -301,8 +309,8 @@
         });
         const result = await response.json();
         if (result.result === 'success') {
-          if (s) s.textContent = '저장 상태: ' + new Date().toLocaleTimeString();
-          renderCalendar(); // 🚀 성공적으로 저장된 후에만 달력을 다시 그립니다.
+          if (s) s.textContent = '저장 완료: ' + new Date().toLocaleTimeString();
+          renderCalendar();
         } else {
            throw new Error(result.message || 'Save operation failed.');
         }
@@ -467,7 +475,7 @@
           if (r.flags?.detailDone) autoSummarize();
         } catch (error) {
           s.textContent = `${which} 이미지 업로드 실패`;
-          alert(`${which} 이미지 업로드 실패! 콘솔을 확인하세요.`);
+          alert(`${which} 이미지 업로드 실패! 콘솔(F12)을 확인하세요.`);
           console.error(error);
         }
       }
@@ -475,41 +483,4 @@
       $('#cmpAInput')?.addEventListener('change', (e) => { const file = e.target.files?.[0]; if (file) handleImageUpload('A', file); });
       $('#cmpBInput')?.addEventListener('change', (e) => { const file = e.target.files?.[0]; if (file) handleImageUpload('B', file); });
       
-      $('#newReportBtn')?.addEventListener('click', ()=>{ const r = createEmptyReport(); state.reports.push(r); setCurrent(r.id); });
-    }
-
-    // ======== Stepper Helper ========
-    function attachStepper(id, step, min, max, displayId, minusId, plusId){
-      const input = $('#'+id); if(!input) return;
-      const minus = $('#'+(minusId || (id+'Minus'))); const plus  = $('#'+(plusId  || (id+'Plus')));
-      const disp  = $('#'+displayId);
-      function clamp(v){ return Math.max(min, Math.min(max, v)); }
-      function set(v){
-        input.value = clamp(v);
-        if(disp) disp.textContent = String(input.value);
-        input.dispatchEvent(new Event('input', { bubbles:true }));
-      }
-      minus?.addEventListener('click', ()=> set(Number(input.value||0) - step));
-      plus ?.addEventListener('click', ()=> set(Number(input.value||0) + step));
-    }
-
-    // ======== Auto Summarizer ========
-    function autoSummarize(focusSummaryTab=false){
-      const r=getCurrent(); if(!r) return;
-      const f=r.fields||{}; const lines=[];
-      if(r.process) lines.push(`과정: ${compact(r.process, 140)}`);
-      const parts=[];
-      const add=(k,v)=>{ if(v!=='' && v!=null) parts.push(`${k}=${v}`); };
-      add('F', f.fAperture); add('ISO', f.iso); add('WB', f.wb); add('Tint', f.tint);
-      add('셔터', f.shutter); add('FPS', f.fps); add('장면', f.sceneFile);
-      if(parts.length) lines.push('측정: ' + parts.join(', '));
-      if(Number.isFinite(f.masterBlack)||Number.isFinite(f.rBlack)||Number.isFinite(f.bBlack)){
-        lines.push(`블랙 M/R/B: ${f.masterBlack??0}/${f.rBlack??0}/${f.bBlack??0}`);
-      }
-      const cmpA=r.compare?.A?.name||''; const cmpB=r.compare?.B?.name||''; if(cmpA||cmpB) lines.push(`비교: ${cmpA||'-'} vs ${cmpB||'-'}`);
-      if(f.memo) lines.push(`메모: ${compact(f.memo, 120)}`);
-      const final = lines.length? ('• ' + lines.join('\n• ')) : '';
-      r.summary = final; saveState(); $('#summary').value = final;
-      if(focusSummaryTab){ $$('.tab-btn').find(b=>b.dataset.tab==='tab-summary')?.click(); }
-    }
-    function compact(txt,max=140){ txt=String(txt).trim().replace
+      $('#newReportBtn')?.addEventListener('click', ()=>{ const r = createEmptyReport(); state.reports.push

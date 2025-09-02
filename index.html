@@ -45,7 +45,7 @@
       <div class="p-3 text-xs text-slate-400 border-t">☁️ Google Drive & Sheets에 자동 동기화됩니다.</div>
     </aside>
 
-    <main class="flex-1 overflow-hidden">
+    <main class="flex-1 overflow-hidden hidden">
       <div class="px-5 py-3 bg-white border-b flex items-center gap-3">
         <input id="reportTitle" class="text-lg font-bold flex-1 outline-none bg-transparent" placeholder="보고서 제목 (예: 2025-08-27 FR7 품질개선 일일 보고)" />
         <div id="autosaveState" class="text-xs text-slate-500">저장 상태: -</div>
@@ -253,18 +253,14 @@
     };
     function pad2(n){ return String(n).padStart(2,'0'); }
 
-    // === 🚀 새로 추가된 부분: 클라우드 연동 설정 ===
+    // === 🚀 클라우드 연동 설정 ===
     const WEB_APP_URL = "https://script.google.com/macros/s/AKfycbyDdd8pk4zU75pyxEuqNC0DYg77soCQHqY_he7dYt9rGrmmo1Vyo2QXUpSWWqtULEA/exec";
-    // ==========================================
-
+    
     // ========= State =========
     let state = { reports: [], currentId: null };
-
-    // calendar view state
     let calView = (()=>{ const t = new Date(); return { y: t.getFullYear(), m: t.getMonth() }; })();
 
-    // === 🚀 수정된 부분: 데이터 로딩 및 저장 함수 ===
-    // 디바운스 유틸리티 함수 (잦은 저장 요청 방지용)
+    // === 🚀 데이터 로딩 및 저장 함수 (수정됨) ===
     function debounce(func, delay) {
       let timeout;
       return function(...args) {
@@ -273,19 +269,18 @@
       };
     }
 
-    // 클라우드에서 전체 데이터를 불러오는 함수
     async function loadState() {
       $('#autosaveState').textContent = '데이터 불러오는 중...';
       try {
-        const response = await fetch(`${WEB_APP_URL}`); // GET 요청은 action 파라미터 불필요
-        if (!response.ok) throw new Error('Network response was not ok.');
+        const response = await fetch(WEB_APP_URL);
+        if (!response.ok) throw new Error(`Network response was not ok. Status: ${response.status}`);
         const data = await response.json();
         if (data && data.reports) {
           state = data;
           console.log('클라우드에서 데이터 로드 성공');
           $('#autosaveState').textContent = '데이터 로드 완료';
         } else {
-           throw new Error('Invalid data structure from server.');
+           throw new Error('서버로부터 받은 데이터 형식이 올바르지 않습니다.');
         }
       } catch (e) {
         console.warn('loadState error', e);
@@ -294,7 +289,6 @@
       }
     }
 
-    // 클라우드에 전체 데이터를 저장하는 함수 (디바운스 적용)
     const saveState = debounce(async () => {
       const s = $('#autosaveState');
       if (s) s.textContent = '저장 중...';
@@ -302,13 +296,13 @@
       try {
         const response = await fetch(`${WEB_APP_URL}?action=save`, {
           method: 'POST',
-          // mode: 'no-cors' 를 제거해야 응답을 제대로 받을 수 있습니다. Apps Script에서 CORS를 처리합니다.
           body: JSON.stringify(state),
-          headers: { 'Content-Type': 'text/plain;charset=utf-8' }, // Apps Script의 doPost 한계 때문에 text/plain으로 전송
+          headers: { 'Content-Type': 'text/plain;charset=utf-8' },
         });
         const result = await response.json();
         if (result.result === 'success') {
           if (s) s.textContent = '저장 상태: ' + new Date().toLocaleTimeString();
+          renderCalendar(); // 🚀 성공적으로 저장된 후에만 달력을 다시 그립니다.
         } else {
            throw new Error(result.message || 'Save operation failed.');
         }
@@ -316,12 +310,7 @@
         console.error('saveState error', e);
         if (s) s.textContent = '저장 실패';
       }
-    }, 1500); // 1.5초 동안 입력이 없으면 저장
-    // ==========================================
-
-    // === ❌ 삭제된 부분: IndexedDB 코드 ===
-    // idb 관련 코드는 모두 제거되었습니다.
-    // ====================================
+    }, 1500);
 
     // ========= Model =========
     function createEmptyReport(){
@@ -330,19 +319,17 @@
         id,
         title: KST.todayISO() + ' FR7 품질개선 일일 보고',
         reportDate: KST.todayISO(),
-        summary: '',
-        process: '',
+        summary: '', process: '',
         fields: {
           fAperture: '', iso: '', wb: 5600, tint: 0, shutter: '',
           sceneFile: '', fps: '', masterBlack: 0, rBlack: 0, bBlack: 0, memo: ''
         },
-        // 🚀 수정된 부분: blobKey -> imageUrl
         compare: { A: { name:'', imageUrl:'' }, B: { name:'', imageUrl:'' } },
         flags: { detailDone: false }
       };
     }
     function getCurrent(){ return state.reports.find(r=>r.id===state.currentId) || null; }
-    function setCurrent(id){ state.currentId = id; saveState(); renderReportList(); renderEditor(); } // renderCalendar는 saveState에서 호출
+    function setCurrent(id){ state.currentId = id; saveState(); renderReportList(); renderEditor(); }
 
     // ========= Rendering =========
     function renderReportList(){
@@ -363,7 +350,7 @@
       const r = getCurrent();
       const main = $('main'); if(!main) return;
       if (!r) {
-        main.classList.add('hidden'); // 선택된 보고서 없으면 메인 숨김
+        main.classList.add('hidden');
         return;
       }
       main.classList.remove('hidden');
@@ -383,27 +370,20 @@
       setVal('rBlack', f.rBlack??0);         text('#valRBlack',    f.rBlack??0);
       setVal('bBlack', f.bBlack??0);         text('#valBBlack',    f.bBlack??0);
       setVal('memo', f.memo);
-
       $('#detailDone').checked = !!(r.flags&&r.flags.detailDone);
-
       loadCompare('A'); loadCompare('B');
     }
     function setVal(id, val){ const el=document.getElementById(id); if(el!=null) el.value = val ?? ''; }
     function text(sel, v){ const el=$(sel); if(el) el.textContent = String(v); }
 
-    // ========= Compare (update detail + summary) =========
-    // 🚀 수정된 부분: IndexedDB 대신 imageUrl 사용
     function loadCompare(which) {
       const r = getCurrent(); if (!r) return;
       const c = r.compare[which];
       const imageUrl = c ? c.imageUrl : '';
-
       const imgEl = which === 'A' ? $('#cmpA') : $('#cmpB');
       if (imgEl) imgEl.src = imageUrl || '';
-
       const sImgEl = which === 'A' ? $('#sumCmpA') : $('#sumCmpB');
       if (sImgEl) sImgEl.src = imageUrl || '';
-
       const nameA = r.compare.A?.name || '';
       const nameB = r.compare.B?.name || '';
       const names = `${nameA} | ${nameB}`.trim();
@@ -413,7 +393,6 @@
 
     // ========= Events =========
     function bindInputs(){
-      // Tabs
       $$('.tab-btn').forEach(btn=>{
         btn.addEventListener('click', ()=>{
           const id=btn.dataset.tab;
@@ -424,25 +403,13 @@
         });
       });
 
-      // Title & summary
       $('#reportTitle')?.addEventListener('input', ()=>{ const r=getCurrent(); if(!r) return; r.title=$('#reportTitle').value; saveState(); });
       $('#summary')?.addEventListener('input', ()=>{ const r=getCurrent(); if(!r) return; r.summary=$('#summary').value; saveState(); });
-
-      // Auto-summary controls
       $('#autoSummaryBtn')?.addEventListener('click', ()=> autoSummarize(true));
       $('#detailDone')?.addEventListener('change', ()=>{ const r=getCurrent(); if(!r) return; r.flags.detailDone = $('#detailDone').checked; saveState(); if($('#detailDone').checked) autoSummarize(true); });
-
-      // Report Date
-      $('#reportDate')?.addEventListener('change', ()=>{
-        const r=getCurrent(); if(!r) return;
-        r.reportDate = $('#reportDate').value;
-        saveState(); renderReportList();
-      });
-
-      // Process
+      $('#reportDate')?.addEventListener('change', ()=>{ const r=getCurrent(); if(!r) return; r.reportDate = $('#reportDate').value; saveState(); renderReportList(); });
       $('#process')?.addEventListener('input', ()=>{ const r=getCurrent(); if(!r) return; r.process=$('#process').value; saveState(); if(r.flags?.detailDone) autoSummarize(); });
 
-      // Fields
       const bind=(id,key,isRange=false,dispId=null)=>{ const el=$('#'+id); if(!el) return;
         el.addEventListener('input', ()=>{ const r=getCurrent(); if(!r) return; r.fields=r.fields||{};
           r.fields[key]= isRange ? (Number(el.value)) : el.value;
@@ -458,14 +425,12 @@
       bind('bBlack','bBlack',true,'valBBlack');
       bind('memo','memo');
 
-      // Stepper buttons
       attachStepper('wb', 100, 2800, 8000, 'valWB');
       attachStepper('tint', 1, -99, 99, 'valTint');
       attachStepper('masterBlack', 1, -99, 99, 'valMasterBlack', 'mbMinus', 'mbPlus');
       attachStepper('rBlack', 1, -99, 99, 'valRBlack', 'rbMinus', 'rbPlus');
       attachStepper('bBlack', 1, -99, 99, 'valBBlack', 'bbMinus', 'bbPlus');
 
-      // === 🚀 새로 추가된 부분: 이미지 업로드 공통 함수 ===
       async function uploadImage(file) {
         const reader = new FileReader();
         return new Promise((resolve, reject) => {
@@ -482,25 +447,17 @@
                 headers: { 'Content-Type': 'text/plain;charset=utf-8' },
               });
               const result = await response.json();
-              if (result.result === 'success') {
-                resolve(result.fileUrl); // 성공 시 파일 URL 반환
-              } else {
-                reject(new Error(result.message || 'Upload failed'));
-              }
-            } catch (error) {
-              reject(error);
-            }
+              if (result.result === 'success') { resolve(result.fileUrl); }
+              else { reject(new Error(result.message || 'Upload failed')); }
+            } catch (error) { reject(error); }
           };
           reader.onerror = error => reject(error);
         });
       }
 
-      // === 🚀 수정된 부분: 이미지 업로드 이벤트 리스너 ===
       async function handleImageUpload(which, file) {
         const r = getCurrent(); if (!r) return;
-        const s = $('#autosaveState');
-        s.textContent = `${which} 이미지 업로드 중...`;
-
+        const s = $('#autosaveState'); s.textContent = `${which} 이미지 업로드 중...`;
         try {
           const imageUrl = await uploadImage(file);
           r.compare[which] = { name: file.name, imageUrl: imageUrl };
@@ -515,27 +472,16 @@
         }
       }
 
-      $('#cmpAInput')?.addEventListener('change', (e) => {
-        const file = e.target.files?.[0]; if (file) handleImageUpload('A', file);
-      });
-      $('#cmpBInput')?.addEventListener('change', (e) => {
-        const file = e.target.files?.[0]; if (file) handleImageUpload('B', file);
-      });
-      // ===============================================
-
-      // New report
-      $('#newReportBtn')?.addEventListener('click', ()=>{
-        const r = createEmptyReport();
-        state.reports.push(r);
-        setCurrent(r.id);
-      });
+      $('#cmpAInput')?.addEventListener('change', (e) => { const file = e.target.files?.[0]; if (file) handleImageUpload('A', file); });
+      $('#cmpBInput')?.addEventListener('change', (e) => { const file = e.target.files?.[0]; if (file) handleImageUpload('B', file); });
+      
+      $('#newReportBtn')?.addEventListener('click', ()=>{ const r = createEmptyReport(); state.reports.push(r); setCurrent(r.id); });
     }
 
     // ======== Stepper Helper ========
     function attachStepper(id, step, min, max, displayId, minusId, plusId){
       const input = $('#'+id); if(!input) return;
-      const minus = $('#'+(minusId || (id+'Minus')));
-      const plus  = $('#'+(plusId  || (id+'Plus')));
+      const minus = $('#'+(minusId || (id+'Minus'))); const plus  = $('#'+(plusId  || (id+'Plus')));
       const disp  = $('#'+displayId);
       function clamp(v){ return Math.max(min, Math.min(max, v)); }
       function set(v){
@@ -550,10 +496,8 @@
     // ======== Auto Summarizer ========
     function autoSummarize(focusSummaryTab=false){
       const r=getCurrent(); if(!r) return;
-      const f=r.fields||{};
-      const lines=[];
+      const f=r.fields||{}; const lines=[];
       if(r.process) lines.push(`과정: ${compact(r.process, 140)}`);
-
       const parts=[];
       const add=(k,v)=>{ if(v!=='' && v!=null) parts.push(`${k}=${v}`); };
       add('F', f.fAperture); add('ISO', f.iso); add('WB', f.wb); add('Tint', f.tint);
@@ -564,78 +508,8 @@
       }
       const cmpA=r.compare?.A?.name||''; const cmpB=r.compare?.B?.name||''; if(cmpA||cmpB) lines.push(`비교: ${cmpA||'-'} vs ${cmpB||'-'}`);
       if(f.memo) lines.push(`메모: ${compact(f.memo, 120)}`);
-
       const final = lines.length? ('• ' + lines.join('\n• ')) : '';
       r.summary = final; saveState(); $('#summary').value = final;
       if(focusSummaryTab){ $$('.tab-btn').find(b=>b.dataset.tab==='tab-summary')?.click(); }
     }
-    function compact(txt,max=140){ txt=String(txt).trim().replace(/\s+/g,' '); if(txt.length<=max) return txt; return txt.slice(0,max-1)+'…'; }
-
-    // ========= Calendar (with navigation) =========
-    function setCurrentByDate(dateStr){
-      const candidates = state.reports.filter(r => (r.reportDate||'').startsWith(dateStr));
-      if(!candidates.length) return;
-      candidates.sort((a,b)=> (b.reportDate||'').localeCompare(a.reportDate||''));
-      setCurrent(candidates[0].id);
-    }
-    function changeMonth(delta){
-      let y = calView.y, m = calView.m + delta;
-      if(m < 0){ m = 11; y -= 1; } if(m > 11){ m = 0;  y += 1; }
-      calView = { y, m };
-      renderCalendar();
-    }
-    function renderCalendar(){
-      const container=$('#calendarContainer'); if(!container) return;
-      const year=calView.y, month=calView.m;
-      const firstDay=new Date(year,month,1), lastDay=new Date(year,month+1,0);
-      $('#calLabel').textContent = `${year}년 ${month+1}월`;
-
-      let html='<table class="calendar"><thead><tr><th>일</th><th>월</th><th>화</th><th>수</th><th>목</th><th>금</th><th>토</th></tr></thead><tbody><tr>';
-      for(let i=0;i<firstDay.getDay();i++){ html+='<td></td>'; }
-      for(let d=1;d<=lastDay.getDate();d++){
-        const dateStr=year+'-'+pad2(month+1)+'-'+pad2(d);
-        const marked=state.reports.some(r=> (r.reportDate||'').startsWith(dateStr));
-        html+=`<td class="date-cell ${marked?'marked':''}" data-date="${dateStr}">${d}</td>`;
-        if((firstDay.getDay()+d)%7===0) html+='</tr><tr>';
-      }
-      html+='</tr></tbody></table>';
-      container.innerHTML=html;
-      $$('td.date-cell.marked', container).forEach(td=>{
-        td.addEventListener('click', ()=> setCurrentByDate(td.dataset.date));
-      });
-    }
-
-    // ========= Helpers =========
-    function escapeHtml(s=''){ return String(s).replace(/[&<>"]/g, c=>({ '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;' }[c])); }
-
-    // ========= Boot =========
-    const origSave = saveState;
-    saveState = function(){ origSave(); renderCalendar(); };
-
-    // 🚀 수정된 부분: 비동기 부팅 함수
-    async function boot() {
-      await loadState(); // 데이터를 모두 불러올 때까지 기다립니다.
-
-      if (!state.reports.length) {
-        const r = createEmptyReport();
-        state.reports.push(r);
-        state.currentId = r.id;
-        saveState();
-      } else if (!state.currentId || !state.reports.some(r => r.id === state.currentId)) {
-        // 가장 최근 보고서를 현재 보고서로 설정
-        const sorted = [...state.reports].sort((a,b)=> (b.reportDate||'').localeCompare(a.reportDate||''));
-        state.currentId = sorted.length > 0 ? sorted[0].id : null;
-      }
-      
-      renderReportList();
-      bindInputs();
-      renderEditor();
-      renderCalendar();
-
-      $('#calPrev')?.addEventListener('click', () => changeMonth(-1));
-      $('#calNext')?.addEventListener('click', () => changeMonth(+1));
-    }
-    document.addEventListener('DOMContentLoaded', boot);
-  </script>
-</body>
-</html>
+    function compact(txt,max=140){ txt=String(txt).trim().replace

@@ -1,3 +1,6 @@
+좋아요! 요청하신 대로 **요약 탭에서 비교 이미지가 먼저 나오고, 그 아래에 오늘의 요약**이 나오도록 수정한 단일 HTML 전체본입니다. 기존 데이터와의 호환을 위해 저장 키(`v9`)는 그대로 뒀고, 비교 이미지는 세부 탭과 요약 탭 모두에서 동일하게 표시/동기화되도록 했어요.
+
+```html
 <!DOCTYPE html>
 <html lang="ko" class="h-full">
 <head>
@@ -23,9 +26,10 @@
 </head>
 <body class="h-full bg-slate-50 text-slate-900">
   <div id="app" class="h-full flex">
+    <!-- Sidebar -->
     <aside class="w-80 bg-white border-r border-slate-200 flex flex-col">
       <div class="p-4 border-b flex items-center justify-between">
-        <h1 class="text-lg font-bold">FR7 프레임 퀄리티 향상 기록</h1>
+        <h1 class="text-lg font-bold">FR7 일일 보고</h1>
       </div>
       <div class="p-3 border-b space-y-2">
         <button id="newReportBtn" class="w-full py-2 rounded-xl bg-blue-600 text-white font-semibold hover:bg-blue-700">+ 새 보고서</button>
@@ -33,6 +37,7 @@
 
       <div id="reportList" class="flex-1 overflow-y-auto thin-scroll divide-y"></div>
 
+      <!-- Calendar with navigation -->
       <div class="p-3 border-t space-y-2">
         <div class="flex items-center justify-between">
           <button id="calPrev" class="px-2 py-1 rounded bg-slate-100 text-sm">◀︎ 전월</button>
@@ -45,12 +50,15 @@
       <div class="p-3 text-xs text-slate-400 border-t">로컬 저장소(LocalStorage/IndexedDB)에 저장됩니다.</div>
     </aside>
 
+    <!-- Main -->
     <main class="flex-1 overflow-hidden">
+      <!-- Top bar -->
       <div class="px-5 py-3 bg-white border-b flex items-center gap-3">
         <input id="reportTitle" class="text-lg font-bold flex-1 outline-none bg-transparent" placeholder="보고서 제목 (예: 2025-08-27 FR7 품질개선 일일 보고)" />
         <div id="autosaveState" class="text-xs text-slate-500">저장 상태: -</div>
       </div>
 
+      <!-- Tabs -->
       <div class="px-5 pt-4 bg-white border-b">
         <div class="flex gap-2 text-sm">
           <button data-tab="tab-summary" class="tab-btn px-3 py-2 rounded-t bg-slate-100 font-semibold">요약</button>
@@ -58,7 +66,9 @@
         </div>
       </div>
 
+      <!-- 요약 (비교 이미지 먼저, 그 다음 요약) -->
       <section id="tab-summary" class="tab-pane p-5 overflow-y-auto thin-scroll h-[calc(100vh-136px)]">
+        <!-- 비교 이미지 프리뷰 -->
         <div class="bg-white rounded-xl shadow p-4 mb-4">
           <h2 class="font-semibold mb-3">비교 (A / B)</h2>
           <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -72,6 +82,7 @@
           <div class="mt-2 text-xs text-slate-500" id="sumCmpNames"></div>
         </div>
 
+        <!-- 오늘의 요약 -->
         <div class="bg-white rounded-xl shadow p-4">
           <div class="flex items-center justify-between mb-2">
             <h2 class="font-semibold">오늘의 요약</h2>
@@ -84,15 +95,18 @@
         </div>
       </section>
 
+      <!-- 세부 -->
       <section id="tab-detail" class="tab-pane hidden p-5 overflow-y-auto thin-scroll h-[calc(100vh-136px)]">
         <div class="grid grid-cols-1 lg:grid-cols-2 gap-4">
 
+          <!-- 보고서 작성 일자 -->
           <div class="bg-white rounded-xl shadow p-4 lg:col-span-2">
             <h2 class="font-semibold mb-3">보고서 작성 일자</h2>
             <input id="reportDate" type="date" class="rounded border p-2 text-sm" />
             <p class="text-xs text-slate-500 mt-2">※ 과거 날짜의 보고서를 작성할 때 이 날짜를 선택하세요. (달력 표시에 반영됩니다)</p>
           </div>
 
+          <!-- 과정 -->
           <div class="bg-white rounded-xl shadow p-4 lg:col-span-2">
             <div class="flex items-center justify-between mb-2">
               <h2 class="font-semibold">과정</h2>
@@ -104,6 +118,7 @@
               placeholder="이전 진행 사항 / 오늘 수정·시도 / 새롭게 알게 된 점 / 문제 & 해결"></textarea>
           </div>
 
+          <!-- 결과·측정 -->
           <div class="bg-white rounded-xl shadow p-4">
             <h2 class="font-semibold mb-3">결과·측정</h2>
             <div class="grid grid-cols-2 gap-3 text-sm">
@@ -122,6 +137,7 @@
                 </select>
               </label>
 
+              <!-- WB + stepper -->
               <label class="space-y-1"><span class="text-slate-600">WB (화이트밸런스)</span>
                 <div class="space-y-2">
                   <div class="stepper">
@@ -133,6 +149,7 @@
                 </div>
               </label>
 
+              <!-- Tint + stepper -->
               <label class="space-y-1"><span class="text-slate-600">Tint</span>
                 <div class="space-y-2">
                   <div class="stepper">
@@ -144,6 +161,7 @@
                 </div>
               </label>
 
+              <!-- Shutter (드롭다운) -->
               <label class="space-y-1"><span class="text-slate-600">셔터</span>
                 <select id="shutter" class="w-full rounded border p-2">
                   <option value="">선택</option>
@@ -153,6 +171,7 @@
                 </select>
               </label>
 
+              <!-- FPS -->
               <label class="space-y-1"><span class="text-slate-600">FPS</span>
                 <select id="fps" class="w-full rounded border p-2">
                   <option value="">선택</option>
@@ -163,6 +182,7 @@
                 </select>
               </label>
 
+              <!-- Scene -->
               <label class="space-y-1"><span class="text-slate-600">장면파일</span>
                 <select id="sceneFile" class="w-full rounded border p-2">
                   <option value="">선택</option>
@@ -174,6 +194,7 @@
               </label>
             </div>
 
+            <!-- 블랙 레벨 + stepper -->
             <div class="mt-4 grid grid-cols-1 gap-4">
               <div>
                 <div class="flex items-center justify-between">
@@ -210,12 +231,14 @@
               </div>
             </div>
 
+            <!-- 메모 / 추가 사항 -->
             <div class="mt-4">
               <label class="text-sm text-slate-600">메모 / 추가 사항</label>
               <textarea id="memo" class="w-full min-h-28 rounded border p-3 text-sm" placeholder="추가적인 디테일을 기록하세요."></textarea>
             </div>
           </div>
 
+          <!-- 이미지 비교 (A/B 추가만) -->
           <div class="bg-white rounded-xl shadow p-4 lg:col-span-2">
             <div class="flex items-center justify-between mb-3">
               <h2 class="font-semibold">이미지 비교 (A / B)</h2>
@@ -341,8 +364,8 @@
       setVal('fps', f.fps);
       setVal('sceneFile', f.sceneFile);
       setVal('masterBlack', f.masterBlack??0); text('#valMasterBlack', f.masterBlack??0);
-      setVal('rBlack', f.rBlack??0);         text('#valRBlack',    f.rBlack??0);
-      setVal('bBlack', f.bBlack??0);         text('#valBBlack',    f.bBlack??0);
+      setVal('rBlack', f.rBlack??0);           text('#valRBlack',    f.rBlack??0);
+      setVal('bBlack', f.bBlack??0);           text('#valBBlack',    f.bBlack??0);
       setVal('memo', f.memo);
 
       const dd = $('#detailDone'); if(dd) dd.checked = !!(r.flags&&r.flags.detailDone);
@@ -538,4 +561,13 @@
       renderReportList(); bindInputs(); renderEditor(); renderCalendar();
 
       // calendar navigation buttons
-      $('#calPrev')?.addEventListener('click', ()=> changeMonth(----
+      $('#calPrev')?.addEventListener('click', ()=> changeMonth(-1));
+      $('#calNext')?.addEventListener('click', ()=> changeMonth(+1));
+    }
+    document.addEventListener('DOMContentLoaded', boot);
+  </script>
+</body>
+</html>
+```
+
+이제 요약 탭을 열면 **비교 A/B 이미지가 먼저** 보이고, 바로 아래에 **오늘의 요약**이 나옵니다. 세부 탭에서 이미지를 바꾸면 요약 탭 프리뷰도 즉시 동기화돼요.

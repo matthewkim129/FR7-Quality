@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>FR7 일일 품질개선 보고 (클라우드 동기화)</title>
+  <title>FR7 일일 품질개선 보고</title>
   <script src="https://cdn.tailwindcss.com"></script>
   <style>
     .thin-scroll::-webkit-scrollbar{width:8px;height:8px}
@@ -19,18 +19,9 @@
     .stepper { display:flex; align-items:center; gap:6px; }
     .btn-step { padding:2px 8px; border-radius:6px; border:1px solid #cbd5e1; font-size:12px; background:#f8fafc; }
     .value-pill { min-width:44px; text-align:center; font-variant-numeric: tabular-nums; }
-    /* 🚀 로딩 오버레이 스타일 추가 */
-    #loading-overlay { position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(255,255,255,0.8); z-index: 9999; display: flex; align-items: center; justify-content: center; backdrop-filter: blur(4px); }
   </style>
 </head>
 <body class="h-full bg-slate-50 text-slate-900">
-  <div id="loading-overlay">
-    <div class="text-center">
-      <div class="font-bold text-lg">🚀 데이터를 불러오는 중...</div>
-      <div class="text-sm text-slate-600 mt-1">잠시만 기다려주세요.</div>
-    </div>
-  </div>
-
   <div id="app" class="h-full flex">
     <aside class="w-80 bg-white border-r border-slate-200 flex flex-col">
       <div class="p-4 border-b flex items-center justify-between">
@@ -51,10 +42,10 @@
         <div id="calendarContainer"></div>
       </div>
 
-      <div class="p-3 text-xs text-slate-400 border-t">☁️ Google Drive & Sheets에 자동 동기화됩니다.</div>
+      <div class="p-3 text-xs text-slate-400 border-t">로컬 저장소(LocalStorage/IndexedDB)에 저장됩니다.</div>
     </aside>
 
-    <main class="flex-1 overflow-hidden hidden">
+    <main class="flex-1 overflow-hidden">
       <div class="px-5 py-3 bg-white border-b flex items-center gap-3">
         <input id="reportTitle" class="text-lg font-bold flex-1 outline-none bg-transparent" placeholder="보고서 제목 (예: 2025-08-27 FR7 품질개선 일일 보고)" />
         <div id="autosaveState" class="text-xs text-slate-500">저장 상태: -</div>
@@ -262,63 +253,28 @@
     };
     function pad2(n){ return String(n).padStart(2,'0'); }
 
-    // === 🚀 클라우드 연동 설정 ===
-    const WEB_APP_URL = "https://script.google.com/macros/s/AKfycbyDdd8pk4zU75pyxEuqNC0DYg77soCQHqY_he7dYt9rGrmmo1Vyo2QXUpSWWqtULEA/exec";
-    
     // ========= State =========
+    const LS_KEY = 'fr7-daily-reports-v9';
     let state = { reports: [], currentId: null };
+
+    // calendar view state
     let calView = (()=>{ const t = new Date(); return { y: t.getFullYear(), m: t.getMonth() }; })();
 
-    // === 🚀 데이터 로딩 및 저장 함수 (수정됨) ===
-    function debounce(func, delay) {
-      let timeout;
-      return function(...args) {
-        clearTimeout(timeout);
-        timeout = setTimeout(() => func.apply(this, args), delay);
-      };
-    }
+    function loadState(){ try{ const raw = localStorage.getItem(LS_KEY); if(raw){ state = JSON.parse(raw); } }catch(e){ console.warn('loadState error', e); } }
+    function saveState(){ localStorage.setItem(LS_KEY, JSON.stringify(state)); const s=$('#autosaveState'); if(s) s.textContent = '저장 상태: ' + new Date().toLocaleTimeString(); }
 
-    async function loadState() {
-      const overlay = $('#loading-overlay');
-      try {
-        const response = await fetch(WEB_APP_URL);
-        if (!response.ok) throw new Error(`Network response was not ok. Status: ${response.status}`);
-        const data = await response.json();
-        if (data && data.reports) {
-          state = data;
-        } else {
-           throw new Error('서버로부터 받은 데이터 형식이 올바르지 않습니다.');
-        }
-      } catch (e) {
-        console.error('loadState error', e);
-        // 🚀 로딩 실패 시 에러 메시지 표시
-        if (overlay) overlay.innerHTML = `<div class="text-center"><div class="font-bold text-lg text-red-600">❌ 데이터 로드 실패!</div><div class="text-sm text-slate-600 mt-1">Apps Script를 다시 배포하거나 콘솔(F12)을 확인하세요.</div></div>`;
-        throw e; // 에러를 다시 던져서 boot 함수에서 잡도록 함
-      }
-    }
-
-    const saveState = debounce(async () => {
-      const s = $('#autosaveState');
-      if (s) s.textContent = '저장 중...';
-
-      try {
-        const response = await fetch(`${WEB_APP_URL}?action=save`, {
-          method: 'POST',
-          body: JSON.stringify(state),
-          headers: { 'Content-Type': 'text/plain;charset=utf-8' },
-        });
-        const result = await response.json();
-        if (result.result === 'success') {
-          if (s) s.textContent = '저장 완료: ' + new Date().toLocaleTimeString();
-          renderCalendar();
-        } else {
-           throw new Error(result.message || 'Save operation failed.');
-        }
-      } catch (e) {
-        console.error('saveState error', e);
-        if (s) s.textContent = '저장 실패';
-      }
-    }, 1500);
+    // ========= IndexedDB for blobs =========
+    const idb = (()=>{ let db;
+      function open(){ return new Promise((resolve, reject)=>{ const req = indexedDB.open('fr7ReportsDB', 1);
+        req.onupgradeneeded = e=>{ db = e.target.result; if(!db.objectStoreNames.contains('blobs')) db.createObjectStore('blobs'); };
+        req.onsuccess = e=>{ db = e.target.result; resolve(); };
+        req.onerror = e=>reject(e);
+      }); }
+      async function put(key, data){ await openIfNeeded(); return new Promise((res,rej)=>{ const tx=db.transaction('blobs','readwrite'); tx.objectStore('blobs').put(data, key); tx.oncomplete=()=>res(); tx.onerror=e=>rej(e); }); }
+      async function get(key){ await openIfNeeded(); return new Promise((res,rej)=>{ const tx=db.transaction('blobs','readonly'); const rq=tx.objectStore('blobs').get(key); rq.onsuccess=()=>res(rq.result); rq.onerror=e=>rej(e); }); }
+      async function openIfNeeded(){ if(!db) await open(); }
+      return { put, get };
+    })();
 
     // ========= Model =========
     function createEmptyReport(){
@@ -327,17 +283,26 @@
         id,
         title: KST.todayISO() + ' FR7 품질개선 일일 보고',
         reportDate: KST.todayISO(),
-        summary: '', process: '',
+        dateKST: KST.todayISO(),
+        summary: '',
+        process: '',
         fields: {
-          fAperture: '', iso: '', wb: 5600, tint: 0, shutter: '',
-          sceneFile: '', fps: '', masterBlack: 0, rBlack: 0, bBlack: 0, memo: ''
+          fAperture: '',
+          iso: '',
+          wb: 5600,
+          tint: 0,
+          shutter: '',
+          sceneFile: '',
+          fps: '',
+          masterBlack: 0, rBlack: 0, bBlack: 0,
+          memo: ''
         },
-        compare: { A: { name:'', imageUrl:'' }, B: { name:'', imageUrl:'' } },
+        compare: { A: { name:'', blobKey:null }, B: { name:'', blobKey:null } },
         flags: { detailDone: false }
       };
     }
     function getCurrent(){ return state.reports.find(r=>r.id===state.currentId) || null; }
-    function setCurrent(id){ state.currentId = id; saveState(); renderReportList(); renderEditor(); }
+    function setCurrent(id){ state.currentId = id; saveState(); renderReportList(); renderEditor(); renderCalendar(); }
 
     // ========= Rendering =========
     function renderReportList(){
@@ -345,7 +310,7 @@
       const sorted = [...state.reports].sort((a,b)=> (b.reportDate||'').localeCompare(a.reportDate||''));
       for(const r of sorted){
         const isActive = r.id===state.currentId;
-        const dateTxt = r.reportDate || '';
+        const dateTxt = r.reportDate || r.dateKST || '';
         const item = document.createElement('button');
         item.className = 'w-full text-left p-3 hover:bg-slate-50 ' + (isActive?'bg-blue-50':'');
         item.innerHTML = `<div class="font-semibold truncate">${escapeHtml(r.title||'(제목 없음)')}</div><div class="text-xs text-slate-500">${escapeHtml(dateTxt)}</div>`;
@@ -355,132 +320,222 @@
     }
 
     function renderEditor(){
-      const r = getCurrent();
-      const main = $('main'); if(!main) return;
-      if (!r) {
-        main.classList.add('hidden');
-        return;
-      }
-      main.classList.remove('hidden');
-
+      const r = getCurrent(); if(!r) return;
       $('#reportTitle').value = r.title||'';
       $('#summary').value = r.summary||'';
-      $('#reportDate').value = r.reportDate || KST.todayISO();
+
+      // Report date
+      const rd = r.reportDate || KST.todayISO();
+      const rdEl = $('#reportDate'); if(rdEl) rdEl.value = rd;
+
+      // Process
       $('#process').value = r.process||'';
 
+      // Fields
       const f = r.fields||{};
-      setVal('fAperture', f.fAperture); setVal('iso', f.iso);
+      setVal('fAperture', f.fAperture);
+      setVal('iso', f.iso);
       setVal('wb', f.wb); text('#valWB', f.wb);
       setVal('tint', f.tint); text('#valTint', f.tint);
-      setVal('shutter', f.shutter); setVal('fps', f.fps);
+      setVal('shutter', f.shutter);
+      setVal('fps', f.fps);
       setVal('sceneFile', f.sceneFile);
       setVal('masterBlack', f.masterBlack??0); text('#valMasterBlack', f.masterBlack??0);
       setVal('rBlack', f.rBlack??0);         text('#valRBlack',    f.rBlack??0);
       setVal('bBlack', f.bBlack??0);         text('#valBBlack',    f.bBlack??0);
       setVal('memo', f.memo);
-      $('#detailDone').checked = !!(r.flags&&r.flags.detailDone);
+
+      const dd = $('#detailDone'); if(dd) dd.checked = !!(r.flags&&r.flags.detailDone);
+
+      // Compare images for BOTH detail and summary preview
       loadCompare('A'); loadCompare('B');
     }
     function setVal(id, val){ const el=document.getElementById(id); if(el!=null) el.value = val ?? ''; }
     function text(sel, v){ const el=$(sel); if(el) el.textContent = String(v); }
 
-    function loadCompare(which) {
-      const r = getCurrent(); if (!r) return;
+    // ========= Compare (update detail + summary) =========
+    async function loadCompare(which){
+      const r = getCurrent(); if(!r) return;
       const c = r.compare[which];
-      const imageUrl = c ? c.imageUrl : '';
-      const imgEl = which === 'A' ? $('#cmpA') : $('#cmpB');
-      if (imgEl) imgEl.src = imageUrl || '';
-      const sImgEl = which === 'A' ? $('#sumCmpA') : $('#sumCmpB');
-      if (sImgEl) sImgEl.src = imageUrl || '';
-      const nameA = r.compare.A?.name || '';
-      const nameB = r.compare.B?.name || '';
-      const names = `${nameA} | ${nameB}`.trim();
-      $('#cmpNames').textContent = names;
-      $('#sumCmpNames').textContent = names;
+
+      // Detail images
+      const imgEl = which==='A'? $('#cmpA'): $('#cmpB');
+      if(imgEl){ imgEl.src = ''; if(c && c.blobKey){ const blob = await idb.get(c.blobKey); if(blob){ imgEl.src = URL.createObjectURL(blob); } } }
+
+      // Summary preview images
+      const sImgEl = which==='A'? $('#sumCmpA'): $('#sumCmpB');
+      if(sImgEl){ sImgEl.src=''; if(c && c.blobKey){ const blob = await idb.get(c.blobKey); if(blob){ sImgEl.src = URL.createObjectURL(blob); } } }
+
+      // Names under both sections
+      const names = `${r.compare.A?.name||''}  |  ${r.compare.B?.name||''}`.trim();
+      const dNames = $('#cmpNames'); if(dNames) dNames.textContent = names;
+      const sNames = $('#sumCmpNames'); if(sNames) sNames.textContent = names;
     }
 
     // ========= Events =========
     function bindInputs(){
+      // Tabs
       $$('.tab-btn').forEach(btn=>{
         btn.addEventListener('click', ()=>{
           const id=btn.dataset.tab;
           $$('.tab-btn').forEach(b=> b.classList.remove('bg-slate-100','font-semibold'));
           btn.classList.add('bg-slate-100','font-semibold');
           $$('.tab-pane').forEach(p=> p.classList.add('hidden'));
-          $('#'+id)?.classList.remove('hidden');
+          const pane = document.getElementById(id);
+          if(pane) pane.classList.remove('hidden');
         });
       });
 
+      // Title & summary
       $('#reportTitle')?.addEventListener('input', ()=>{ const r=getCurrent(); if(!r) return; r.title=$('#reportTitle').value; saveState(); });
       $('#summary')?.addEventListener('input', ()=>{ const r=getCurrent(); if(!r) return; r.summary=$('#summary').value; saveState(); });
+
+      // Auto-summary controls
       $('#autoSummaryBtn')?.addEventListener('click', ()=> autoSummarize(true));
-      $('#detailDone')?.addEventListener('change', ()=>{ const r=getCurrent(); if(!r) return; r.flags.detailDone = $('#detailDone').checked; saveState(); if($('#detailDone').checked) autoSummarize(true); });
-      $('#reportDate')?.addEventListener('change', ()=>{ const r=getCurrent(); if(!r) return; r.reportDate = $('#reportDate').value; saveState(); renderReportList(); });
+      const done=$('#detailDone'); if(done) done.addEventListener('change', ()=>{ const r=getCurrent(); if(!r) return; r.flags.detailDone = done.checked; saveState(); if(done.checked) autoSummarize(true); });
+
+      // Report Date
+      $('#reportDate')?.addEventListener('change', ()=>{
+        const r=getCurrent(); if(!r) return;
+        const v = $('#reportDate').value;
+        r.reportDate = v;
+        saveState(); renderReportList(); renderCalendar();
+      });
+
+      // Process
       $('#process')?.addEventListener('input', ()=>{ const r=getCurrent(); if(!r) return; r.process=$('#process').value; saveState(); if(r.flags?.detailDone) autoSummarize(); });
 
+      // Fields
       const bind=(id,key,isRange=false,dispId=null)=>{ const el=$('#'+id); if(!el) return;
         el.addEventListener('input', ()=>{ const r=getCurrent(); if(!r) return; r.fields=r.fields||{};
           r.fields[key]= isRange ? (Number(el.value)) : el.value;
-          if(dispId){ $('#'+dispId).textContent=String(r.fields[key]); }
+          if(dispId){ const dEl=$('#'+dispId); if(dEl) dEl.textContent=String(r.fields[key]); }
           saveState(); if(r.flags?.detailDone) autoSummarize();
         });
       };
-      bind('fAperture','fAperture'); bind('iso','iso');
-      bind('wb','wb',true,'valWB'); bind('tint','tint',true,'valTint');
-      bind('shutter','shutter'); bind('fps','fps'); bind('sceneFile','sceneFile');
+      bind('fAperture','fAperture');
+      bind('iso','iso');
+      bind('wb','wb',true,'valWB');
+      bind('tint','tint',true,'valTint');
+      bind('shutter','shutter');
+      bind('fps','fps');
+      bind('sceneFile','sceneFile');
       bind('masterBlack','masterBlack',true,'valMasterBlack');
       bind('rBlack','rBlack',true,'valRBlack');
       bind('bBlack','bBlack',true,'valBBlack');
       bind('memo','memo');
 
+      // Stepper buttons
       attachStepper('wb', 100, 2800, 8000, 'valWB');
       attachStepper('tint', 1, -99, 99, 'valTint');
       attachStepper('masterBlack', 1, -99, 99, 'valMasterBlack', 'mbMinus', 'mbPlus');
       attachStepper('rBlack', 1, -99, 99, 'valRBlack', 'rbMinus', 'rbPlus');
       attachStepper('bBlack', 1, -99, 99, 'valBBlack', 'bbMinus', 'bbPlus');
 
-      async function uploadImage(file) {
-        const reader = new FileReader();
-        return new Promise((resolve, reject) => {
-          reader.readAsDataURL(file);
-          reader.onload = async () => {
-            try {
-              const response = await fetch(`${WEB_APP_URL}?action=uploadImage`, {
-                method: 'POST',
-                body: JSON.stringify({
-                  imageData: reader.result,
-                  fileName: file.name,
-                  mimeType: file.type
-                }),
-                headers: { 'Content-Type': 'text/plain;charset=utf-8' },
-              });
-              const result = await response.json();
-              if (result.result === 'success') { resolve(result.fileUrl); }
-              else { reject(new Error(result.message || 'Upload failed')); }
-            } catch (error) { reject(error); }
-          };
-          reader.onerror = error => reject(error);
-        });
+      // Compare inputs (자동으로 요약 프리뷰도 갱신)
+      $('#cmpAInput')?.addEventListener('change', async (e)=>{ const f=e.target.files?.[0]; if(!f) return; const r=getCurrent(); if(!r) return; const key='b_'+Math.random().toString(36).slice(2); await idb.put(key, f); r.compare.A={ name:f.name, blobKey:key }; saveState(); loadCompare('A'); if(r.flags?.detailDone) autoSummarize(); });
+      $('#cmpBInput')?.addEventListener('change', async (e)=>{ const f=e.target.files?.[0]; if(!f) return; const r=getCurrent(); if(!r) return; const key='b_'+Math.random().toString(36).slice(2); await idb.put(key, f); r.compare.B={ name:f.name, blobKey:key }; saveState(); loadCompare('B'); if(r.flags?.detailDone) autoSummarize(); });
+
+      // New report
+      $('#newReportBtn')?.addEventListener('click', ()=>{ const r=createEmptyReport(); state.reports.push(r); setCurrent(r.id); });
+    }
+
+    // ======== Stepper Helper ========
+    function attachStepper(id, step, min, max, displayId, minusId, plusId){
+      const input = document.getElementById(id);
+      if(!input) return;
+      const minus = document.getElementById(minusId || (id+'Minus'));
+      const plus  = document.getElementById(plusId  || (id+'Plus'));
+      const disp  = document.getElementById(displayId);
+      function clamp(v){ return Math.max(min, Math.min(max, v)); }
+      function set(v){
+        input.value = clamp(v);
+        if(disp) disp.textContent = String(input.value);
+        input.dispatchEvent(new Event('input', { bubbles:true }));
+      }
+      minus?.addEventListener('click', ()=> set(Number(input.value||0) - step));
+      plus ?.addEventListener('click', ()=> set(Number(input.value||0) + step));
+    }
+
+    // ======== Auto Summarizer ========
+    function autoSummarize(focusSummaryTab=false){
+      const r=getCurrent(); if(!r) return;
+      const f=r.fields||{};
+      const lines=[];
+      if(r.process) lines.push(`과정: ${compact(r.process, 140)}`);
+
+      const parts=[];
+      const add=(k,v)=>{ if(v!=='' && v!=null) parts.push(`${k}=${v}`); };
+      add('F', f.fAperture); add('ISO', f.iso);
+      add('WB', f.wb); add('Tint', f.tint);
+      add('셔터', f.shutter); add('FPS', f.fps); add('장면', f.sceneFile);
+      if(parts.length) lines.push('측정: ' + parts.join(', '));
+
+      if(Number.isFinite(f.masterBlack)||Number.isFinite(f.rBlack)||Number.isFinite(f.bBlack)){
+        lines.push(`블랙 M/R/B: ${f.masterBlack??0}/${f.rBlack??0}/${f.bBlack??0}`);
       }
 
-      async function handleImageUpload(which, file) {
-        const r = getCurrent(); if (!r) return;
-        const s = $('#autosaveState'); s.textContent = `${which} 이미지 업로드 중...`;
-        try {
-          const imageUrl = await uploadImage(file);
-          r.compare[which] = { name: file.name, imageUrl: imageUrl };
-          s.textContent = `${which} 이미지 업로드 완료`;
-          saveState();
-          loadCompare(which);
-          if (r.flags?.detailDone) autoSummarize();
-        } catch (error) {
-          s.textContent = `${which} 이미지 업로드 실패`;
-          alert(`${which} 이미지 업로드 실패! 콘솔(F12)을 확인하세요.`);
-          console.error(error);
-        }
-      }
+      const cmpA=r.compare?.A?.name||''; const cmpB=r.compare?.B?.name||''; if(cmpA||cmpB) lines.push(`비교: ${cmpA||'-'} vs ${cmpB||'-'}`);
+      if(f.memo) lines.push(`메모: ${compact(f.memo, 120)}`);
 
-      $('#cmpAInput')?.addEventListener('change', (e) => { const file = e.target.files?.[0]; if (file) handleImageUpload('A', file); });
-      $('#cmpBInput')?.addEventListener('change', (e) => { const file = e.target.files?.[0]; if (file) handleImageUpload('B', file); });
-      
-      $('#newReportBtn')?.addEventListener('click', ()=>{ const r = createEmptyReport(); state.reports.push
+      const final = lines.length? ('• ' + lines.join('\n• ')) : '';
+      r.summary = final; saveState(); const sEl=$('#summary'); if(sEl) sEl.value = final;
+      if(focusSummaryTab){ const btn=[...document.querySelectorAll('.tab-btn')].find(b=>b.dataset.tab==='tab-summary'); if(btn) btn.click(); }
+    }
+    function compact(txt,max=140){ txt=String(txt).trim().replace(/\s+/g,' '); if(txt.length<=max) return txt; return txt.slice(0,max-1)+'…'; }
+
+    // ========= Calendar (with navigation) =========
+    function setCurrentByDate(dateStr){
+      const candidates = state.reports.filter(r => (r.reportDate||'').startsWith(dateStr));
+      if(!candidates.length) return;
+      candidates.sort((a,b)=> (b.reportDate||'').localeCompare(a.reportDate||''));
+      const pick = candidates[0];
+      state.currentId = pick.id; saveState(); renderReportList(); renderEditor();
+    }
+    function changeMonth(delta){
+      let y = calView.y, m = calView.m + delta;
+      if(m < 0){ m = 11; y -= 1; }
+      if(m > 11){ m = 0;  y += 1; }
+      calView = { y, m };
+      renderCalendar();
+    }
+    function renderCalendar(){
+      const container=$('#calendarContainer'); if(!container) return;
+      const year=calView.y, month=calView.m; // month: 0-11
+      const firstDay=new Date(year,month,1);
+      const lastDay=new Date(year,month+1,0);
+
+      // Label
+      const label = `${year}년 ${month+1}월`;
+      const lblEl = $('#calLabel'); if(lblEl) lblEl.textContent = label;
+
+      let html='<table class="calendar"><thead><tr>';
+      const days=['일','월','화','수','목','금','토']; for(const d of days) html+='<th>'+d+'</th>';
+      html+='</tr></thead><tbody><tr>';
+      for(let i=0;i<firstDay.getDay();i++){ html+='<td></td>'; }
+      for(let d=1;d<=lastDay.getDate();d++){
+        const dateStr=year+'-'+pad2(month+1)+'-'+pad2(d);
+        const marked=state.reports.some(r=> (r.reportDate||'').startsWith(dateStr) || (r.dateKST||'').startsWith(dateStr));
+        html+=`<td class="date-cell ${marked?'marked':''}" data-date="${dateStr}">${d}</td>`;
+        if((firstDay.getDay()+d)%7===0) html+='</tr><tr>';
+      }
+      html+='</tr></tbody></table>';
+      container.innerHTML=html;
+      container.querySelectorAll('td.date-cell.marked').forEach(td=>{
+        td.addEventListener('click', ()=>{ const ds=td.getAttribute('data-date'); setCurrentByDate(ds); });
+      });
+    }
+
+    // ========= Helpers =========
+    function escapeHtml(s=''){ return s.replace(/[&<>"]/g, c=>({ '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;' }[c])); }
+
+    // ========= Boot =========
+    const origSave = saveState; saveState = function(){ origSave(); renderCalendar(); };
+    function boot(){
+      loadState();
+      if(!state.reports.length){ const r=createEmptyReport(); state.reports.push(r); state.currentId=r.id; saveState(); }
+      else if(!state.currentId){ state.currentId=state.reports[0].id; saveState(); }
+      renderReportList(); bindInputs(); renderEditor(); renderCalendar();
+
+      // calendar navigation buttons
+      $('#calPrev')?.addEventListener('click', ()=> changeMonth(----

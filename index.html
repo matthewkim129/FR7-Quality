@@ -1,431 +1,655 @@
-<script type="module">
-  // ================= Firebase SDK (v10+ modular) =================
-  import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js";
-  import { getAuth, GoogleAuthProvider, signInWithPopup, onAuthStateChanged, signOut } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-auth.js";
-  import { getFirestore, collection, doc, setDoc, getDocs, onSnapshot, query, orderBy, enableIndexedDbPersistence } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js";
-  import { getStorage, ref, uploadBytes, getDownloadURL } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-storage.js";
+<!DOCTYPE html>
+<html lang="ko" class="h-full">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>FR7 일일 품질개선 보고 (Firebase 동기화)</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <style>
+    .thin-scroll::-webkit-scrollbar{width:8px;height:8px}
+    .thin-scroll::-webkit-scrollbar-thumb{background:#cbd5e1;border-radius:6px}
+    .thin-scroll::-webkit-scrollbar-track{background:transparent}
+    .drag-over{outline:2px dashed #60a5fa; outline-offset:4px}
+    table.calendar {border-collapse: collapse; width: 100%;}
+    table.calendar th, table.calendar td {border: 1px solid #e2e8f0; text-align: center; padding: 4px; font-size: 12px;}
+    table.calendar td.marked {background-color:#bfdbfe; font-weight:bold; cursor:pointer;}
+    .ratio-16x9 { aspect-ratio: 16 / 9; }
+    .cmp-box { background:#000; }
+    .cmp-box img { width:100%; height:100%; object-fit:contain; }
+    .stepper { display:flex; align-items:center; gap:6px; }
+    .btn-step { padding:2px 8px; border-radius:6px; border:1px solid #cbd5e1; font-size:12px; background:#f8fafc; }
+    .value-pill { min-width:44px; text-align:center; font-variant-numeric: tabular-nums; }
+  </style>
+</head>
+<body class="h-full bg-slate-50 text-slate-900">
+  <div id="app" class="h-full flex">
+    <!-- Sidebar -->
+    <aside class="w-80 bg-white border-r border-slate-200 flex flex-col">
+      <div class="p-4 border-b flex items-center justify-between">
+        <h1 class="text-lg font-bold">FR7 일일 보고</h1>
+      </div>
+      <div class="p-3 border-b space-y-2">
+        <button id="newReportBtn" class="w-full py-2 rounded-xl bg-blue-600 text-white font-semibold hover:bg-blue-700">+ 새 보고서</button>
+      </div>
 
-  // === 1) Firebase 설정값 붙여넣기 (콘솔에서 복사) ===
-  const firebaseConfig = {
-    apiKey: "YOUR_API_KEY",
-    authDomain: "YOUR_PROJECT.firebaseapp.com",
-    projectId: "YOUR_PROJECT_ID",
-    storageBucket: "YOUR_PROJECT.appspot.com",
-    messagingSenderId: "YOUR_MSG_ID",
-    appId: "YOUR_APP_ID",
-  };
+      <div id="reportList" class="flex-1 overflow-y-auto thin-scroll divide-y"></div>
 
-  const app = initializeApp(firebaseConfig);
-  const auth = getAuth(app);
-  const db   = getFirestore(app);
-  const st   = getStorage(app);
-  // 오프라인 캐시(권장)
-  enableIndexedDbPersistence(db).catch(()=>{ /* 이미 켜져있어도 무시 */ });
+      <!-- Calendar with navigation -->
+      <div class="p-3 border-t space-y-2">
+        <div class="flex items-center justify-between">
+          <button id="calPrev" class="px-2 py-1 rounded bg-slate-100 text-sm">◀︎ 전월</button>
+          <div id="calLabel" class="text-sm font-semibold">-</div>
+          <button id="calNext" class="px-2 py-1 rounded bg-slate-100 text-sm">다음월 ▶︎</button>
+        </div>
+        <div id="calendarContainer"></div>
+      </div>
 
-  // ================ 기존 앱 유틸/상태 ================
-  const $ = (sel, el=document) => el.querySelector(sel);
-  const $$ = (sel, el=document) => Array.from(el.querySelectorAll(sel));
-  const KST = {
-    nowString(){ return new Date().toLocaleString('ko-KR', { timeZone: 'Asia/Seoul', hour12: false }); },
-    todayISO(){ const d = new Date(new Date().toLocaleString('en-US', { timeZone: 'Asia/Seoul' })); return d.toISOString().slice(0,10); }
-  };
-  function pad2(n){ return String(n).padStart(2,'0'); }
+      <div class="p-3 text-xs text-slate-400 border-t">로컬 저장소(LocalStorage/IndexedDB) + Firebase 동기화</div>
+    </aside>
 
-  // 기존 localStorage 키는 그대로 두되, 클라우드가 있으면 클라우드 우선
-  const LS_KEY = 'fr7-daily-reports-v9';
-  let state = { reports: [], currentId: null };
-  function loadLocal(){ try{ const raw = localStorage.getItem(LS_KEY); if(raw){ state = JSON.parse(raw); } }catch(e){ console.warn('loadLocal error', e); } }
-  function saveLocal(){ localStorage.setItem(LS_KEY, JSON.stringify(state)); const s=$('#autosaveState'); if(s) s.textContent = '저장 상태: ' + new Date().toLocaleTimeString(); }
+    <!-- Main -->
+    <main class="flex-1 overflow-hidden">
+      <!-- Top bar -->
+      <div class="px-5 py-3 bg-white border-b flex items-center gap-3">
+        <input id="reportTitle" class="text-lg font-bold flex-1 outline-none bg-transparent" placeholder="보고서 제목 (예: 2025-08-27 FR7 품질개선 일일 보고)" />
+        <div id="autosaveState" class="text-xs text-slate-500">저장 상태: -</div>
 
-  // UI에 이미 있는 함수/DOM 일부는 아래서 재사용 (렌더러/바인딩)
-  // ======= IndexedDB는 로컬 미디어 프리뷰 용도 유지 (클라우드에는 Storage로 업로드) =======
-  const idb = (()=>{ let db;
-    function open(){ return new Promise((resolve, reject)=>{ const req = indexedDB.open('fr7ReportsDB', 1);
-      req.onupgradeneeded = e=>{ db = e.target.result; if(!db.objectStoreNames.contains('blobs')) db.createObjectStore('blobs'); };
-      req.onsuccess = e=>{ db = e.target.result; resolve(); };
-      req.onerror = e=>reject(e);
-    }); }
-    async function put(key, data){ await openIfNeeded(); return new Promise((res,rej)=>{ const tx=db.transaction('blobs','readwrite'); tx.objectStore('blobs').put(data, key); tx.oncomplete=()=>res(); tx.onerror=e=>rej(e); }); }
-    async function get(key){ await openIfNeeded(); return new Promise((res,rej)=>{ const tx=db.transaction('blobs','readonly'); const rq=tx.objectStore('blobs').get(key); rq.onsuccess=()=>res(rq.result); rq.onerror=e=>rej(e); }); }
-    async function openIfNeeded(){ if(!db) await open(); }
-    return { put, get };
-  })();
+        <!-- 로그인/로그아웃 + 동기화 상태 -->
+        <button id="signInBtn" class="text-sm px-3 py-1 rounded bg-emerald-600 text-white">Google 로그인</button>
+        <button id="signOutBtn" class="text-sm px-3 py-1 rounded bg-slate-200 hidden">로그아웃</button>
+        <span id="cloudState" class="text-xs text-slate-500 ml-2">클라우드: 미연결</span>
+      </div>
 
-  // ======= 모델 =======
-  function createEmptyReport(){
-    const id = 'r_' + Math.random().toString(36).slice(2);
-    return {
-      id,
-      title: KST.todayISO() + ' FR7 품질개선 일일 보고',
-      reportDate: KST.todayISO(),
-      dateKST: KST.todayISO(),
-      summary: '',
-      process: '',
-      fields: {
-        fAperture: '',
-        iso: '',
-        wb: 5600,
-        tint: 0,
-        shutter: '',
-        sceneFile: '',
-        fps: '',
-        masterBlack: 0, rBlack: 0, bBlack: 0,
-        memo: ''
-      },
-      // compare: A/B는 Storage URL을 저장해 다른 기기에서도 표시 가능하도록 함
-      compare: { 
-        A: { name:'', blobKey:null, url:null }, 
-        B: { name:'', blobKey:null, url:null } 
-      },
-      flags: { detailDone: false }
+      <!-- Tabs -->
+      <div class="px-5 pt-4 bg-white border-b">
+        <div class="flex gap-2 text-sm">
+          <button data-tab="tab-summary" class="tab-btn px-3 py-2 rounded-t bg-slate-100 font-semibold">요약</button>
+          <button data-tab="tab-detail" class="tab-btn px-3 py-2 rounded-t">세부</button>
+        </div>
+      </div>
+
+      <!-- 요약 (비교 이미지 먼저, 그 다음 요약) -->
+      <section id="tab-summary" class="tab-pane p-5 overflow-y-auto thin-scroll h-[calc(100vh-136px)]">
+        <div class="bg-white rounded-xl shadow p-4 mb-4">
+          <h2 class="font-semibold mb-3">비교 (A / B)</h2>
+          <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div class="cmp-box ratio-16x9 rounded-lg overflow-hidden flex items-center justify-center">
+              <img id="sumCmpA" alt="요약 프리뷰 A" />
+            </div>
+            <div class="cmp-box ratio-16x9 rounded-lg overflow-hidden flex items-center justify-center">
+              <img id="sumCmpB" alt="요약 프리뷰 B" />
+            </div>
+          </div>
+          <div class="mt-2 text-xs text-slate-500" id="sumCmpNames"></div>
+        </div>
+
+        <div class="bg-white rounded-xl shadow p-4">
+          <div class="flex items-center justify-between mb-2">
+            <h2 class="font-semibold">오늘의 요약</h2>
+            <button id="autoSummaryBtn" class="px-3 py-2 rounded bg-indigo-600 text-white text-sm hover:bg-indigo-700">
+              세부 내용으로 요약 자동생성
+            </button>
+          </div>
+          <textarea id="summary" class="w-full min-h-40 rounded border p-3 text-sm"
+            placeholder="세부 탭 내용을 기반으로 요약됩니다. (기본정보/체크리스트 제외)"></textarea>
+        </div>
+      </section>
+
+      <!-- 세부 -->
+      <section id="tab-detail" class="tab-pane hidden p-5 overflow-y-auto thin-scroll h-[calc(100vh-136px)]">
+        <div class="grid grid-cols-1 lg:grid-cols-2 gap-4">
+
+          <!-- 보고서 작성 일자 -->
+          <div class="bg-white rounded-xl shadow p-4 lg:col-span-2">
+            <h2 class="font-semibold mb-3">보고서 작성 일자</h2>
+            <input id="reportDate" type="date" class="rounded border p-2 text-sm" />
+            <p class="text-xs text-slate-500 mt-2">※ 과거 날짜의 보고서를 작성할 때 이 날짜를 선택하세요. (달력 표시에 반영됩니다)</p>
+          </div>
+
+          <!-- 과정 -->
+          <div class="bg-white rounded-xl shadow p-4 lg:col-span-2">
+            <div class="flex items-center justify-between mb-2">
+              <h2 class="font-semibold">과정</h2>
+              <label class="text-sm flex items-center gap-2">
+                <input id="detailDone" type="checkbox" class="w-4 h-4"> 세부 작성 완료 시 자동 요약
+              </label>
+            </div>
+            <textarea id="process" class="w-full min-h-40 rounded border p-3 text-sm"
+              placeholder="이전 진행 사항 / 오늘 수정·시도 / 새롭게 알게 된 점 / 문제 & 해결"></textarea>
+          </div>
+
+          <!-- 결과·측정 -->
+          <div class="bg-white rounded-xl shadow p-4">
+            <h2 class="font-semibold mb-3">결과·측정</h2>
+            <div class="grid grid-cols-2 gap-3 text-sm">
+              <label class="space-y-1"><span class="text-slate-600">F (조리개)</span>
+                <input id="fAperture" type="text" class="w-full rounded border p-2" placeholder="예: F4.0" />
+              </label>
+
+              <!-- ISO (역순) -->
+              <label class="space-y-1"><span class="text-slate-600">ISO</span>
+                <select id="iso" class="w-full rounded border p-2">
+                  <option value="">선택</option>
+                  <option>25600</option><option>20000</option><option>16000</option><option>12800</option>
+                  <option>10000</option><option>8000</option><option>6400</option><option>5000</option>
+                  <option>4000</option><option>3200</option><option>2500</option><option>2000</option>
+                  <option>1600</option><option>1250</option><option>1000</option><option>800</option>
+                  <option>640</option><option>500</option><option>400</option><option>320</option>
+                </select>
+              </label>
+
+              <!-- WB + stepper -->
+              <label class="space-y-1"><span class="text-slate-600">WB (화이트밸런스)</span>
+                <div class="space-y-2">
+                  <div class="stepper">
+                    <button id="wbMinus" class="btn-step" type="button">−100</button>
+                    <span class="value-pill text-slate-700 font-mono" id="valWB">5600</span>
+                    <button id="wbPlus" class="btn-step" type="button">＋100</button>
+                  </div>
+                  <input id="wb" type="range" min="2800" max="8000" step="100" value="5600" class="w-full">
+                </div>
+              </label>
+
+              <!-- Tint + stepper -->
+              <label class="space-y-1"><span class="text-slate-600">Tint</span>
+                <div class="space-y-2">
+                  <div class="stepper">
+                    <button id="tintMinus" class="btn-step" type="button">−1</button>
+                    <span class="value-pill text-slate-700 font-mono" id="valTint">0</span>
+                    <button id="tintPlus" class="btn-step" type="button">＋1</button>
+                  </div>
+                  <input id="tint" type="range" min="-99" max="99" step="1" value="0" class="w-full">
+                </div>
+              </label>
+
+              <!-- Shutter (드롭다운) -->
+              <label class="space-y-1"><span class="text-slate-600">셔터</span>
+                <select id="shutter" class="w-full rounded border p-2">
+                  <option value="">선택</option>
+                  <option>1/30</option><option>1/40</option><option>1/50</option><option>1/60</option>
+                  <option>1/100</option><option>1/120</option><option>1/125</option><option>1/250</option>
+                  <option>1/500</option><option>1/1000</option>
+                </select>
+              </label>
+
+              <!-- FPS -->
+              <label class="space-y-1"><span class="text-slate-600">FPS</span>
+                <select id="fps" class="w-full rounded border p-2">
+                  <option value="">선택</option>
+                  <option>29.97</option>
+                  <option>30</option>
+                  <option>59.94</option>
+                  <option>60</option>
+                </select>
+              </label>
+
+              <!-- Scene -->
+              <label class="space-y-1"><span class="text-slate-600">장면파일</span>
+                <select id="sceneFile" class="w-full rounded border p-2">
+                  <option value="">선택</option>
+                  <option value="S-Cinetone">S-Cinetone</option>
+                  <option value="Standard">Standard</option>
+                  <option value="Still">Still</option>
+                  <option value="ITU709">ITU709</option>
+                </select>
+              </label>
+            </div>
+
+            <!-- 블랙 레벨 + stepper -->
+            <div class="mt-4 grid grid-cols-1 gap-4">
+              <div>
+                <div class="flex items-center justify-between">
+                  <span class="text-sm text-slate-600">Master Black</span>
+                  <div class="stepper">
+                    <button id="mbMinus" class="btn-step" type="button">−1</button>
+                    <span id="valMasterBlack" class="value-pill text-slate-700 font-mono">0</span>
+                    <button id="mbPlus" class="btn-step" type="button">＋1</button>
+                  </div>
+                </div>
+                <input id="masterBlack" type="range" min="-99" max="99" step="1" value="0" class="w-full mt-1">
+              </div>
+              <div>
+                <div class="flex items-center justify-between">
+                  <span class="text-sm text-slate-600">R Black</span>
+                  <div class="stepper">
+                    <button id="rbMinus" class="btn-step" type="button">−1</button>
+                    <span id="valRBlack" class="value-pill text-slate-700 font-mono">0</span>
+                    <button id="rbPlus" class="btn-step" type="button">＋1</button>
+                  </div>
+                </div>
+                <input id="rBlack" type="range" min="-99" max="99" step="1" value="0" class="w-full mt-1">
+              </div>
+              <div>
+                <div class="flex items-center justify-between">
+                  <span class="text-sm text-slate-600">B Black</span>
+                  <div class="stepper">
+                    <button id="bbMinus" class="btn-step" type="button">−1</button>
+                    <span id="valBBlack" class="value-pill text-slate-700 font-mono">0</span>
+                    <button id="bbPlus" class="btn-step" type="button">＋1</button>
+                  </div>
+                </div>
+                <input id="bBlack" type="range" min="-99" max="99" step="1" value="0" class="w-full mt-1">
+              </div>
+            </div>
+
+            <!-- 메모 / 추가 사항 -->
+            <div class="mt-4">
+              <label class="text-sm text-slate-600">메모 / 추가 사항</label>
+              <textarea id="memo" class="w-full min-h-28 rounded border p-3 text-sm" placeholder="추가적인 디테일을 기록하세요."></textarea>
+            </div>
+          </div>
+
+          <!-- 이미지 비교 (A/B 추가만) -->
+          <div class="bg-white rounded-xl shadow p-4 lg:col-span-2">
+            <div class="flex items-center justify-between mb-3">
+              <h2 class="font-semibold">이미지 비교 (A / B)</h2>
+              <div class="flex gap-2">
+                <label class="cursor-pointer text-xs px-2 py-1 rounded bg-slate-700 text-white hover:bg-slate-800">A 이미지 추가
+                  <input id="cmpAInput" type="file" accept="image/*" class="hidden">
+                </label>
+                <label class="cursor-pointer text-xs px-2 py-1 rounded bg-slate-700 text-white hover:bg-slate-800">B 이미지 추가
+                  <input id="cmpBInput" type="file" accept="image/*" class="hidden">
+                </label>
+              </div>
+            </div>
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <div class="cmp-box ratio-16x9 rounded-lg overflow-hidden flex items-center justify-center">
+                <img id="cmpA" alt="비교 A" />
+              </div>
+              <div class="cmp-box ratio-16x9 rounded-lg overflow-hidden flex items-center justify-center">
+                <img id="cmpB" alt="비교 B" />
+              </div>
+            </div>
+            <div class="mt-2 text-xs text-slate-500" id="cmpNames"></div>
+          </div>
+        </div>
+      </section>
+    </main>
+  </div>
+
+  <!-- Firebase + App Logic -->
+  <script type="module">
+    /* ---------- Firebase SDK ---------- */
+    import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js";
+    import { getAuth, GoogleAuthProvider, signInWithPopup, onAuthStateChanged, signOut } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-auth.js";
+    import { getFirestore, collection, doc, setDoc, onSnapshot, query, orderBy, enableIndexedDbPersistence } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js";
+    import { getStorage, ref, uploadBytes, getDownloadURL } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-storage.js";
+
+    /* === 1) Firebase 설정값을 본인 프로젝트 값으로 교체하세요 === */
+    const firebaseConfig = {
+      apiKey: "YOUR_API_KEY",
+      authDomain: "YOUR_PROJECT.firebaseapp.com",
+      projectId: "YOUR_PROJECT_ID",
+      storageBucket: "YOUR_PROJECT.appspot.com",
+      messagingSenderId: "YOUR_MSG_ID",
+      appId: "YOUR_APP_ID",
     };
-  }
-  function getCurrent(){ return state.reports.find(r=>r.id===state.currentId) || null; }
-  function setCurrent(id){ state.currentId = id; saveAndSync(); renderReportList(); renderEditor(); renderCalendar(); }
 
-  // ======= 렌더링(너가 쓰던 기존 렌더 함수들과 동일한 패턴) =======
-  function renderReportList(){
-    const box = $('#reportList'); if(!box) return; box.innerHTML = '';
-    const sorted = [...state.reports].sort((a,b)=> (b.reportDate||'').localeCompare(a.reportDate||''));
-    for(const r of sorted){
-      const isActive = r.id===state.currentId;
-      const dateTxt = r.reportDate || r.dateKST || '';
-      const item = document.createElement('button');
-      item.className = 'w-full text-left p-3 hover:bg-slate-50 ' + (isActive?'bg-blue-50':'');
-      item.innerHTML = `<div class="font-semibold truncate">${escapeHtml(r.title||'(제목 없음)')}</div><div class="text-xs text-slate-500">${escapeHtml(dateTxt)}</div>`;
-      item.onclick = ()=> setCurrent(r.id);
-      box.appendChild(item);
+    const app = initializeApp(firebaseConfig);
+    const auth = getAuth(app);
+    const db   = getFirestore(app);
+    const st   = getStorage(app);
+    enableIndexedDbPersistence(db).catch(()=>{});
+
+    /* ---------- Utilities & State ---------- */
+    const $ = (sel, el=document) => el.querySelector(sel);
+    const $$ = (sel, el=document) => Array.from(el.querySelectorAll(sel));
+    const KST = {
+      nowString(){ return new Date().toLocaleString('ko-KR', { timeZone: 'Asia/Seoul', hour12: false }); },
+      todayISO(){ const d = new Date(new Date().toLocaleString('en-US', { timeZone: 'Asia/Seoul' })); return d.toISOString().slice(0,10); }
+    };
+    const LS_KEY = 'fr7-daily-reports-v9';
+    let state = { reports: [], currentId: null };
+    function loadLocal(){ try{ const raw = localStorage.getItem(LS_KEY); if(raw){ state = JSON.parse(raw); } }catch(e){ console.warn('loadLocal error', e); } }
+    function saveLocal(){ localStorage.setItem(LS_KEY, JSON.stringify(state)); const s=$('#autosaveState'); if(s) s.textContent = '저장 상태: ' + new Date().toLocaleTimeString(); }
+    function escapeHtml(s=''){ return s.replace(/[&<>"]/g, c=>({ '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;' }[c])); }
+    function pad2(n){ return String(n).padStart(2,'0'); }
+
+    // 로컬 이미지 미리보기용 IndexedDB
+    const idb = (()=>{ let db;
+      function open(){ return new Promise((resolve, reject)=>{ const req = indexedDB.open('fr7ReportsDB', 1);
+        req.onupgradeneeded = e=>{ db = e.target.result; if(!db.objectStoreNames.contains('blobs')) db.createObjectStore('blobs'); };
+        req.onsuccess = e=>{ db = e.target.result; resolve(); };
+        req.onerror = e=>reject(e);
+      }); }
+      async function put(key, data){ await openIfNeeded(); return new Promise((res,rej)=>{ const tx=db.transaction('blobs','readwrite'); tx.objectStore('blobs').put(data, key); tx.oncomplete=()=>res(); tx.onerror=e=>rej(e); }); }
+      async function get(key){ await openIfNeeded(); return new Promise((res,rej)=>{ const tx=db.transaction('blobs','readonly'); const rq=tx.objectStore('blobs').get(key); rq.onsuccess=()=>res(rq.result); rq.onerror=e=>rej(e); }); }
+      async function openIfNeeded(){ if(!db) await open(); }
+      return { put, get };
+    })();
+
+    /* ---------- Model ---------- */
+    function createEmptyReport(){
+      const id = 'r_' + Math.random().toString(36).slice(2);
+      return {
+        id,
+        title: KST.todayISO() + ' FR7 품질개선 일일 보고',
+        reportDate: KST.todayISO(),
+        dateKST: KST.todayISO(),
+        summary: '',
+        process: '',
+        fields: {
+          fAperture: '',
+          iso: '',
+          wb: 5600,
+          tint: 0,
+          shutter: '',
+          sceneFile: '',
+          fps: '',
+          masterBlack: 0, rBlack: 0, bBlack: 0,
+          memo: ''
+        },
+        compare: { A: { name:'', blobKey:null, url:null }, B: { name:'', blobKey:null, url:null } },
+        flags: { detailDone: false }
+      };
     }
-  }
-  function renderEditor(){
-    const r = getCurrent(); if(!r) return;
-    $('#reportTitle').value = r.title||'';
-    $('#summary').value = r.summary||'';
-    const rd = r.reportDate || KST.todayISO();
-    const rdEl = $('#reportDate'); if(rdEl) rdEl.value = rd;
-    $('#process').value = r.process||'';
+    function getCurrent(){ return state.reports.find(r=>r.id===state.currentId) || null; }
+    function setCurrent(id){ state.currentId = id; saveAndSync(); renderReportList(); renderEditor(); renderCalendar(); }
 
-    const f = r.fields||{};
-    setVal('fAperture', f.fAperture);
-    setVal('iso', f.iso);
-    setVal('wb', f.wb); text('#valWB', f.wb);
-    setVal('tint', f.tint); text('#valTint', f.tint);
-    setVal('shutter', f.shutter);
-    setVal('fps', f.fps);
-    setVal('sceneFile', f.sceneFile);
-    setVal('masterBlack', f.masterBlack??0); text('#valMasterBlack', f.masterBlack??0);
-    setVal('rBlack', f.rBlack??0);           text('#valRBlack',    f.rBlack??0);
-    setVal('bBlack', f.bBlack??0);           text('#valBBlack',    f.bBlack??0);
-    setVal('memo', f.memo);
+    /* ---------- Renderers ---------- */
+    function renderReportList(){
+      const box = $('#reportList'); if(!box) return; box.innerHTML = '';
+      const sorted = [...state.reports].sort((a,b)=> (b.reportDate||'').localeCompare(a.reportDate||''));
+      for(const r of sorted){
+        const isActive = r.id===state.currentId;
+        const dateTxt = r.reportDate || r.dateKST || '';
+        const item = document.createElement('button');
+        item.className = 'w-full text-left p-3 hover:bg-slate-50 ' + (isActive?'bg-blue-50':'');
+        item.innerHTML = `<div class="font-semibold truncate">${escapeHtml(r.title||'(제목 없음)')}</div><div class="text-xs text-slate-500">${escapeHtml(dateTxt)}</div>`;
+        item.onclick = ()=> setCurrent(r.id);
+        box.appendChild(item);
+      }
+    }
+    function renderEditor(){
+      const r = getCurrent(); if(!r) return;
+      $('#reportTitle').value = r.title||'';
+      $('#summary').value = r.summary||'';
+      $('#reportDate').value = r.reportDate || KST.todayISO();
+      $('#process').value = r.process||'';
 
-    const dd = $('#detailDone'); if(dd) dd.checked = !!(r.flags&&r.flags.detailDone);
+      const f = r.fields||{};
+      setVal('fAperture', f.fAperture);
+      setVal('iso', f.iso);
+      setVal('wb', f.wb); text('#valWB', f.wb);
+      setVal('tint', f.tint); text('#valTint', f.tint);
+      setVal('shutter', f.shutter);
+      setVal('fps', f.fps);
+      setVal('sceneFile', f.sceneFile);
+      setVal('masterBlack', f.masterBlack??0); text('#valMasterBlack', f.masterBlack??0);
+      setVal('rBlack', f.rBlack??0);           text('#valRBlack',    f.rBlack??0);
+      setVal('bBlack', f.bBlack??0);           text('#valBBlack',    f.bBlack??0);
+      setVal('memo', f.memo);
 
-    loadCompare('A'); loadCompare('B');
-  }
-  function setVal(id, val){ const el=document.getElementById(id); if(el!=null) el.value = val ?? ''; }
-  function text(sel, v){ const el=$(sel); if(el) el.textContent = String(v); }
-  function escapeHtml(s=''){ return s.replace(/[&<>"]/g, c=>({ '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;' }[c])); }
+      const dd = $('#detailDone'); if(dd) dd.checked = !!(r.flags&&r.flags.detailDone);
 
-  // ======= 비교 이미지: 요약/세부 동시 갱신 (Storage URL 우선) =======
-  async function loadCompare(which){
-    const r = getCurrent(); if(!r) return;
-    const c = r.compare[which];
-    const elDetail = which==='A' ? $('#cmpA') : $('#cmpB');
-    const elSummary = which==='A' ? $('#sumCmpA') : $('#sumCmpB');
+      loadCompare('A'); loadCompare('B');
+    }
+    function setVal(id, val){ const el=document.getElementById(id); if(el!=null) el.value = val ?? ''; }
+    function text(sel, v){ const el=$(sel); if(el) el.textContent = String(v); }
 
-    // 우선 url 있으면 그걸로 표시, 없으면 로컬 blobKey로 표시
-    const url = c?.url;
-    if(elDetail){ elDetail.src = url || ''; }
-    if(elSummary){ elSummary.src = url || ''; }
+    /* ---------- Compare (detail + summary) ---------- */
+    async function loadCompare(which){
+      const r = getCurrent(); if(!r) return;
+      const c = r.compare[which];
+      const elDetail = which==='A' ? $('#cmpA') : $('#cmpB');
+      const elSummary = which==='A' ? $('#sumCmpA') : $('#sumCmpB');
 
-    if(!url && c?.blobKey){
-      const blob = await idb.get(c.blobKey);
-      const objUrl = blob ? URL.createObjectURL(blob) : '';
-      if(elDetail)  elDetail.src = objUrl;
-      if(elSummary) elSummary.src = objUrl;
+      const url = c?.url || '';
+      if(elDetail)  elDetail.src = url;
+      if(elSummary) elSummary.src = url;
+
+      if(!url && c?.blobKey){
+        const blob = await idb.get(c.blobKey);
+        const objUrl = blob ? URL.createObjectURL(blob) : '';
+        if(elDetail)  elDetail.src = objUrl;
+        if(elSummary) elSummary.src = objUrl;
+      }
+
+      const names = `${r.compare.A?.name||''}  |  ${r.compare.B?.name||''}`.trim();
+      const dNames = $('#cmpNames');     if(dNames) dNames.textContent = names;
+      const sNames = $('#sumCmpNames');  if(sNames) sNames.textContent = names;
     }
 
-    const names = `${r.compare.A?.name||''}  |  ${r.compare.B?.name||''}`.trim();
-    const dNames = $('#cmpNames');     if(dNames) dNames.textContent = names;
-    const sNames = $('#sumCmpNames');  if(sNames) sNames.textContent = names;
-  }
-
-  // ================== 이벤트 바인딩 ==================
-  function bindInputs(){
-    // 탭
-    $$('.tab-btn').forEach(btn=>{
-      btn.addEventListener('click', ()=>{
-        const id=btn.dataset.tab;
-        $$('.tab-btn').forEach(b=> b.classList.remove('bg-slate-100','font-semibold'));
-        btn.classList.add('bg-slate-100','font-semibold');
-        $$('.tab-pane').forEach(p=> p.classList.add('hidden'));
-        const pane = document.getElementById(id);
-        if(pane) pane.classList.remove('hidden');
+    /* ---------- Events & Bindings ---------- */
+    function bindInputs(){
+      // 탭
+      $$('.tab-btn').forEach(btn=>{
+        btn.addEventListener('click', ()=>{
+          const id=btn.dataset.tab;
+          $$('.tab-btn').forEach(b=> b.classList.remove('bg-slate-100','font-semibold'));
+          btn.classList.add('bg-slate-100','font-semibold');
+          $$('.tab-pane').forEach(p=> p.classList.add('hidden'));
+          const pane = document.getElementById(id);
+          if(pane) pane.classList.remove('hidden');
+        });
       });
+
+      // 제목/요약
+      $('#reportTitle')?.addEventListener('input', ()=>{ const r=getCurrent(); if(!r) return; r.title=$('#reportTitle').value; saveAndSync(); });
+      $('#summary')?.addEventListener('input', ()=>{ const r=getCurrent(); if(!r) return; r.summary=$('#summary').value; saveAndSync(); });
+
+      // 자동 요약
+      $('#autoSummaryBtn')?.addEventListener('click', ()=> autoSummarize(true));
+      const done=$('#detailDone'); if(done) done.addEventListener('change', ()=>{ const r=getCurrent(); if(!r) return; r.flags.detailDone = done.checked; saveAndSync(); if(done.checked) autoSummarize(true); });
+
+      // 작성일자
+      $('#reportDate')?.addEventListener('change', ()=>{ const r=getCurrent(); if(!r) return; r.reportDate=$('#reportDate').value; saveAndSync(); renderReportList(); renderCalendar(); });
+
+      // 과정
+      $('#process')?.addEventListener('input', ()=>{ const r=getCurrent(); if(!r) return; r.process=$('#process').value; saveAndSync(); if(r.flags?.detailDone) autoSummarize(); });
+
+      // 필드
+      const bind=(id,key,isRange=false,dispId=null)=>{ const el=$('#'+id); if(!el) return;
+        el.addEventListener('input', ()=>{ const r=getCurrent(); if(!r) return; r.fields=r.fields||{};
+          r.fields[key]= isRange ? (Number(el.value)) : el.value;
+          if(dispId){ const dEl=$('#'+dispId); if(dEl) dEl.textContent=String(r.fields[key]); }
+          saveAndSync(); if(r.flags?.detailDone) autoSummarize();
+        });
+      };
+      bind('fAperture','fAperture');
+      bind('iso','iso'); bind('wb','wb',true,'valWB');
+      bind('tint','tint',true,'valTint');
+      bind('shutter','shutter'); bind('fps','fps'); bind('sceneFile','sceneFile');
+      bind('masterBlack','masterBlack',true,'valMasterBlack');
+      bind('rBlack','rBlack',true,'valRBlack');
+      bind('bBlack','bBlack',true,'valBBlack');
+      bind('memo','memo');
+
+      // range 스텝 버튼
+      attachStepper('wb', 100, 2800, 8000, 'valWB');
+      attachStepper('tint', 1, -99, 99, 'valTint');
+      attachStepper('masterBlack', 1, -99, 99, 'valMasterBlack', 'mbMinus', 'mbPlus');
+      attachStepper('rBlack', 1, -99, 99, 'valRBlack', 'rbMinus', 'rbPlus');
+      attachStepper('bBlack', 1, -99, 99, 'valBBlack', 'bbMinus', 'bbPlus');
+
+      // 비교 이미지 업로드 → Storage 업로드 + URL 저장 + 프리뷰 갱신
+      $('#cmpAInput')?.addEventListener('change', (e)=>handleCompareFile('A', e));
+      $('#cmpBInput')?.addEventListener('change', (e)=>handleCompareFile('B', e));
+
+      // 새 보고서
+      $('#newReportBtn')?.addEventListener('click', ()=>{ const r=createEmptyReport(); state.reports.push(r); setCurrent(r.id); });
+    }
+
+    function attachStepper(id, step, min, max, displayId, minusId, plusId){
+      const input = document.getElementById(id);
+      if(!input) return;
+      const minus = document.getElementById(minusId || (id+'Minus'));
+      const plus  = document.getElementById(plusId  || (id+'Plus'));
+      const disp  = document.getElementById(displayId);
+      function clamp(v){ return Math.max(min, Math.min(max, v)); }
+      function set(v){
+        input.value = clamp(v);
+        if(disp) disp.textContent = String(input.value);
+        input.dispatchEvent(new Event('input', { bubbles:true }));
+      }
+      minus?.addEventListener('click', ()=> set(Number(input.value||0) - step));
+      plus ?.addEventListener('click', ()=> set(Number(input.value||0) + step));
+    }
+
+    /* ---------- Auto Summarizer (compact: 단일 정의) ---------- */
+    function compact(text, max=140){
+      const t = String(text||'').trim().replace(/\s+/g,' ');
+      return (t.length<=max)? t : (t.slice(0,max-1)+'…');
+    }
+    function autoSummarize(focusSummaryTab=false){
+      const r=getCurrent(); if(!r) return;
+      const f=r.fields||{};
+      const lines=[];
+      if(r.process) lines.push(`과정: ${compact(r.process, 140)}`);
+
+      const parts=[];
+      const add=(k,v)=>{ if(v!=='' && v!=null) parts.push(`${k}=${v}`); };
+      add('F', f.fAperture); add('ISO', f.iso);
+      add('WB', f.wb); add('Tint', f.tint);
+      add('셔터', f.shutter); add('FPS', f.fps); add('장면', f.sceneFile);
+      if(parts.length) lines.push('측정: ' + parts.join(', '));
+
+      if(Number.isFinite(f.masterBlack)||Number.isFinite(f.rBlack)||Number.isFinite(f.bBlack)){
+        lines.push(`블랙 M/R/B: ${f.masterBlack??0}/${f.rBlack??0}/${f.bBlack??0}`);
+      }
+
+      const cmpA=r.compare?.A?.name||''; const cmpB=r.compare?.B?.name||''; if(cmpA||cmpB) lines.push(`비교: ${cmpA||'-'} vs ${cmpB||'-'}`);
+      if(f.memo) lines.push(`메모: ${compact(f.memo, 120)}`);
+
+      const final = lines.length? ('• ' + lines.join('\n• ')) : '';
+      const sEl=$('#summary'); if(sEl) sEl.value = final;
+      r.summary = final; saveAndSync();
+      if(focusSummaryTab){ const btn=[...document.querySelectorAll('.tab-btn')].find(b=>b.dataset.tab==='tab-summary'); if(btn) btn.click(); }
+    }
+
+    /* ---------- Calendar with navigation ---------- */
+    let calView = (()=>{ const t = new Date(); return { y: t.getFullYear(), m: t.getMonth() }; })();
+    function setCurrentByDate(dateStr){
+      const candidates = state.reports.filter(r => (r.reportDate||'').startsWith(dateStr));
+      if(!candidates.length) return;
+      candidates.sort((a,b)=> (b.reportDate||'').localeCompare(a.reportDate||''));
+      const pick = candidates[0];
+      state.currentId = pick.id; saveAndSync(false); renderReportList(); renderEditor();
+    }
+    function changeMonth(delta){
+      let y = calView.y, m = calView.m + delta;
+      if(m < 0){ m = 11; y -= 1; }
+      if(m > 11){ m = 0;  y += 1; }
+      calView = { y, m };
+      renderCalendar();
+    }
+    function renderCalendar(){
+      const container=$('#calendarContainer'); if(!container) return;
+      const year=calView.y, month=calView.m;
+      const firstDay=new Date(year,month,1);
+      const lastDay=new Date(year,month+1,0);
+
+      const label = `${year}년 ${month+1}월`;
+      const lblEl = $('#calLabel'); if(lblEl) lblEl.textContent = label;
+
+      let html='<table class="calendar"><thead><tr>';
+      const days=['일','월','화','수','목','금','토']; for(const d of days) html+='<th>'+d+'</th>';
+      html+='</tr></thead><tbody><tr>';
+      for(let i=0;i<firstDay.getDay();i++){ html+='<td></td>'; }
+      for(let d=1;d<=lastDay.getDate();d++){
+        const dateStr=year+'-'+pad2(month+1)+'-'+pad2(d);
+        const marked=state.reports.some(r=> (r.reportDate||'').startsWith(dateStr) || (r.dateKST||'').startsWith(dateStr));
+        html+=`<td class="date-cell ${marked?'marked':''}" data-date="${dateStr}">${d}</td>`;
+        if((firstDay.getDay()+d)%7===0) html+='</tr><tr>';
+      }
+      html+='</tr></tbody></table>';
+      container.innerHTML=html;
+      container.querySelectorAll('td.date-cell.marked').forEach(td=>{
+        td.addEventListener('click', ()=>{ const ds=td.getAttribute('data-date'); setCurrentByDate(ds); });
+      });
+    }
+
+    /* ---------- Cloud Sync (Firestore + Storage) ---------- */
+    const cloud = { unsub:null, uid:null };
+    function uiCloud(text){ const el=$('#cloudState'); if(el) el.textContent = '클라우드: ' + text; }
+
+    let syncTimer=null;
+    function saveAndSync(doLocal=true){
+      if(doLocal) saveLocal();
+      if(!cloud.uid) return;
+      clearTimeout(syncTimer);
+      syncTimer = setTimeout(async ()=>{
+        for(const rep of state.reports){
+          await setDoc(doc(db, 'users', cloud.uid, 'reports', rep.id), rep, { merge: true });
+        }
+        uiCloud('동기화 완료');
+      }, 250);
+    }
+
+    async function startCloudSubscription(){
+      if(!cloud.uid) return;
+      cloud.unsub?.();
+      const col = collection(db, 'users', cloud.uid, 'reports');
+      const q = query(col, orderBy('reportDate','desc'));
+      cloud.unsub = onSnapshot(q, (snap)=>{
+        const arr=[]; snap.forEach(doc=> arr.push(doc.data()));
+        const byId = new Map(state.reports.map(r=>[r.id,r]));
+        for(const r of arr){ byId.set(r.id, r); }
+        state.reports = Array.from(byId.values());
+        if(!state.currentId && state.reports.length){ state.currentId = state.reports[0].id; }
+        saveLocal(); renderReportList(); renderEditor(); renderCalendar();
+        uiCloud('실시간 연결됨');
+      }, ()=> uiCloud('구독 오류'));
+    }
+
+    async function handleCompareFile(which, e){
+      const file = e.target.files?.[0]; if(!file) return;
+      const r=getCurrent(); if(!r) return;
+      const key='b_'+Math.random().toString(36).slice(2);
+      await idb.put(key, file);
+      r.compare[which] = { name:file.name, blobKey:key, url:r.compare[which]?.url||null };
+      saveAndSync(); // 로컬 먼저
+
+      if(cloud.uid){
+        const path = `users/${cloud.uid}/reports/${r.id}/compare/${which}-${Date.now()}`;
+        const rf = ref(st, path);
+        await uploadBytes(rf, file);
+        const url = await getDownloadURL(rf);
+        r.compare[which].url = url;
+        saveAndSync();
+        loadCompare(which);
+      }
+    }
+
+    /* ---------- Auth UI ---------- */
+    $('#signInBtn')?.addEventListener('click', async ()=>{
+      try{ const provider = new GoogleAuthProvider(); await signInWithPopup(auth, provider); }
+      catch(e){ alert('로그인 실패: '+e.message); }
+    });
+    $('#signOutBtn')?.addEventListener('click', async ()=>{ await signOut(auth); });
+
+    onAuthStateChanged(auth, async (user)=>{
+      if(user){
+        cloud.uid = user.uid;
+        $('#signInBtn')?.classList.add('hidden');
+        $('#signOutBtn')?.classList.remove('hidden');
+        uiCloud('연결됨 (동기화 준비)');
+        await startCloudSubscription();
+        // 초기 업로드(로컬만 있는 데이터 올리기)
+        for(const rep of state.reports){
+          await setDoc(doc(db, 'users', cloud.uid, 'reports', rep.id), rep, { merge: true });
+        }
+        uiCloud('초기 업로드 완료');
+      }else{
+        cloud.uid = null;
+        $('#signInBtn')?.classList.remove('hidden');
+        $('#signOutBtn')?.classList.add('hidden');
+        uiCloud('미연결');
+        cloud.unsub?.(); cloud.unsub=null;
+        renderReportList(); renderEditor(); renderCalendar();
+      }
     });
 
-    // 제목/요약
-    $('#reportTitle')?.addEventListener('input', ()=>{ const r=getCurrent(); if(!r) return; r.title=$('#reportTitle').value; saveAndSync(); });
-    $('#summary')?.addEventListener('input', ()=>{ const r=getCurrent(); if(!r) return; r.summary=$('#summary').value; saveAndSync(); });
-
-    // 자동 요약
-    $('#autoSummaryBtn')?.addEventListener('click', ()=> autoSummarize(true));
-    const done=$('#detailDone'); if(done) done.addEventListener('change', ()=>{ const r=getCurrent(); if(!r) return; r.flags.detailDone = done.checked; saveAndSync(); if(done.checked) autoSummarize(true); });
-
-    // 작성일자
-    $('#reportDate')?.addEventListener('change', ()=>{ const r=getCurrent(); if(!r) return; r.reportDate=$('#reportDate').value; saveAndSync(); renderReportList(); renderCalendar(); });
-
-    // 과정
-    $('#process')?.addEventListener('input', ()=>{ const r=getCurrent(); if(!r) return; r.process=$('#process').value; saveAndSync(); if(r.flags?.detailDone) autoSummarize(); });
-
-    // 필드
-    const bind=(id,key,isRange=false,dispId=null)=>{ const el=$('#'+id); if(!el) return;
-      el.addEventListener('input', ()=>{ const r=getCurrent(); if(!r) return; r.fields=r.fields||{};
-        r.fields[key]= isRange ? (Number(el.value)) : el.value;
-        if(dispId){ const dEl=$('#'+dispId); if(dEl) dEl.textContent=String(r.fields[key]); }
-        saveAndSync(); if(r.flags?.detailDone) autoSummarize();
-      });
-    };
-    bind('fAperture','fAperture');
-    bind('iso','iso');
-    bind('wb','wb',true,'valWB');
-    bind('tint','tint',true,'valTint');
-    bind('shutter','shutter');
-    bind('fps','fps');
-    bind('sceneFile','sceneFile');
-    bind('masterBlack','masterBlack',true,'valMasterBlack');
-    bind('rBlack','rBlack',true,'valRBlack');
-    bind('bBlack','bBlack',true,'valBBlack');
-    bind('memo','memo');
-
-    // range 스텝 버튼
-    attachStepper('wb', 100, 2800, 8000, 'valWB');
-    attachStepper('tint', 1, -99, 99, 'valTint');
-    attachStepper('masterBlack', 1, -99, 99, 'valMasterBlack', 'mbMinus', 'mbPlus');
-    attachStepper('rBlack', 1, -99, 99, 'valRBlack', 'rbMinus', 'rbPlus');
-    attachStepper('bBlack', 1, -99, 99, 'valBBlack', 'bbMinus', 'bbPlus');
-
-    // 비교 이미지 업로드 → Storage에 업로드 + Firestore url 저장 + 프리뷰 갱신
-    $('#cmpAInput')?.addEventListener('change', (e)=>handleCompareFile('A', e));
-    $('#cmpBInput')?.addEventListener('change', (e)=>handleCompareFile('B', e));
-
-    // 새 보고서
-    $('#newReportBtn')?.addEventListener('click', ()=>{ const r=createEmptyReport(); state.reports.push(r); setCurrent(r.id); });
-  }
-
-  function attachStepper(id, step, min, max, displayId, minusId, plusId){
-    const input = document.getElementById(id);
-    if(!input) return;
-    const minus = document.getElementById(minusId || (id+'Minus'));
-    const plus  = document.getElementById(plusId  || (id+'Plus'));
-    const disp  = document.getElementById(displayId);
-    function clamp(v){ return Math.max(min, Math.min(max, v)); }
-    function set(v){
-      input.value = clamp(v);
-      if(disp) disp.textContent = String(input.value);
-      input.dispatchEvent(new Event('input', { bubbles:true }));
+    /* ---------- Boot ---------- */
+    function boot(){
+      loadLocal();
+      if(!state.reports.length){ const r=createEmptyReport(); state.reports.push(r); state.currentId=r.id; saveLocal(); }
+      else if(!state.currentId){ state.currentId=state.reports[0].id; saveLocal(); }
+      renderReportList(); bindInputs(); renderEditor(); renderCalendar();
+      $('#calPrev')?.addEventListener('click', ()=> changeMonth(-1));
+      $('#calNext')?.addEventListener('click', ()=> changeMonth(+1));
     }
-    minus?.addEventListener('click', ()=> set(Number(input.value||0) - step));
-    plus ?.addEventListener('click', ()=> set(Number(input.value||0) + step));
-  }
-
-  // ============== 요약 생성 (기존 로직) ==============
-  function autoSummarize(focusSummaryTab=false){
-    const r=getCurrent(); if(!r) return;
-    const f=r.fields||{};
-    const lines=[];
-    if(r.process) lines.push(`과정: ${compact(r.process, 140)}`);
-
-    const parts=[];
-    const add=(k,v)=>{ if(v!=='' && v!=null) parts.push(`${k}=${v}`); };
-    add('F', f.fAperture); add('ISO', f.iso);
-    add('WB', f.wb); add('Tint', f.tint);
-    add('셔터', f.shutter); add('FPS', f.fps); add('장면', f.sceneFile);
-    if(parts.length) lines.push('측정: ' + parts.join(', '));
-
-    if(Number.isFinite(f.masterBlack)||Number.isFinite(f.rBlack)||Number.isFinite(f.bBlack)){
-      lines.push(`블랙 M/R/B: ${f.masterBlack??0}/${f.rBlack??0}/${f.bBlack??0}`);
-    }
-
-    const cmpA=getCurrent()?.compare?.A?.name||''; const cmpB=getCurrent()?.compare?.B?.name||''; if(cmpA||cmpB) lines.push(`비교: ${cmpA||'-'} vs ${cmpB||'-'}`);
-    if(f.memo) lines.push(`메모: ${compact(f.memo, 120)}`);
-
-    const final = lines.length? ('• ' + lines.join('\n• ')) : '';
-    const sEl=$('#summary'); if(sEl) sEl.value = final;
-    const rNow=getCurrent(); if(rNow){ rNow.summary = final; saveAndSync(); }
-    if(focusSummaryTab){ const btn=[...document.querySelectorAll('.tab-btn')].find(b=>b.dataset.tab==='tab-summary'); if(btn) btn.click(); }
-  }
-  function compact(txt,max=140){ txt=String(txt).trim().replace(/\s+/g,' '); if(txt.length<=max) return txt; return txt.slice(0,max-1)+'…'; }
-
-  // ============== 달력 (전월/다음월 이동 유지) ==============
-  let calView = (()=>{ const t = new Date(); return { y: t.getFullYear(), m: t.getMonth() }; })();
-  function setCurrentByDate(dateStr){
-    const candidates = state.reports.filter(r => (r.reportDate||'').startsWith(dateStr));
-    if(!candidates.length) return;
-    candidates.sort((a,b)=> (b.reportDate||'').localeCompare(a.reportDate||''));
-    const pick = candidates[0];
-    state.currentId = pick.id; saveAndSync(false); renderReportList(); renderEditor();
-  }
-  function changeMonth(delta){
-    let y = calView.y, m = calView.m + delta;
-    if(m < 0){ m = 11; y -= 1; }
-    if(m > 11){ m = 0;  y += 1; }
-    calView = { y, m };
-    renderCalendar();
-  }
-  function renderCalendar(){
-    const container=$('#calendarContainer'); if(!container) return;
-    const year=calView.y, month=calView.m;
-    const firstDay=new Date(year,month,1);
-    const lastDay=new Date(year,month+1,0);
-
-    const label = `${year}년 ${month+1}월`;
-    const lblEl = $('#calLabel'); if(lblEl) lblEl.textContent = label;
-
-    let html='<table class="calendar"><thead><tr>';
-    const days=['일','월','화','수','목','금','토']; for(const d of days) html+='<th>'+d+'</th>';
-    html+='</tr></thead><tbody><tr>';
-    for(let i=0;i<firstDay.getDay();i++){ html+='<td></td>'; }
-    for(let d=1;d<=lastDay.getDate();d++){
-      const dateStr=year+'-'+pad2(month+1)+'-'+pad2(d);
-      const marked=state.reports.some(r=> (r.reportDate||'').startsWith(dateStr) || (r.dateKST||'').startsWith(dateStr));
-      html+=`<td class="date-cell ${marked?'marked':''}" data-date="${dateStr}">${d}</td>`;
-      if((firstDay.getDay()+d)%7===0) html+='</tr><tr>';
-    }
-    html+='</tr></tbody></table>';
-    container.innerHTML=html;
-    container.querySelectorAll('td.date-cell.marked').forEach(td=>{
-      td.addEventListener('click', ()=>{ const ds=td.getAttribute('data-date'); setCurrentByDate(ds); });
-    });
-  }
-
-  // ============== 클라우드 동기화 핵심 ==============
-  // Firestore에 저장할 경로: users/{uid}/reports/{reportId}
-  const cloud = {
-    unsub: null,
-    uid: null,
-  };
-
-  function uiCloud(text){ const el=$('#cloudState'); if(el) el.textContent = '클라우드: ' + text; }
-
-  // 1) 현재 state를 로컬 저장 + (로그인 시) 클라우드 저장
-  let syncTimer=null;
-  function saveAndSync(doLocal=true){
-    if(doLocal) saveLocal();
-    if(!cloud.uid) return; // 로그인 전이면 클라우드 패스
-    // 디바운스
-    clearTimeout(syncTimer);
-    syncTimer = setTimeout(async ()=>{
-      const r = getCurrent();
-      // 전체 목록을 한번에 업로드(간단), 개별 문서만 업로드(효율) 중 택1
-      // 여기선 **각 문서**를 올립니다.
-      for(const rep of state.reports){
-        await setDoc(doc(db, 'users', cloud.uid, 'reports', rep.id), rep, { merge: true });
-      }
-      uiCloud('동기화 완료');
-    }, 300);
-  }
-
-  // 2) 초기 로드/로그인 시, 실시간 구독해서 state를 클라우드 기준으로 반영
-  async function startCloudSubscription(){
-    if(!cloud.uid) return;
-    cloud.unsub?.();
-    const col = collection(db, 'users', cloud.uid, 'reports');
-    const q = query(col, orderBy('reportDate','desc'));
-    cloud.unsub = onSnapshot(q, (snap)=>{
-      const arr=[];
-      snap.forEach(doc=> arr.push(doc.data()));
-      // 로컬과 병합: 같은 id는 교체, 없는 건 추가
-      const byId = new Map(state.reports.map(r=>[r.id,r]));
-      for(const r of arr){ byId.set(r.id, r); }
-      state.reports = Array.from(byId.values());
-      // currentId 보존 없으면 최근걸로
-      if(!state.currentId && state.reports.length){ state.currentId = state.reports[0].id; }
-      saveLocal();
-      renderReportList(); renderEditor(); renderCalendar();
-      uiCloud('실시간 연결됨');
-    }, (err)=> uiCloud('구독 오류'));
-  }
-
-  // 3) 비교 이미지 파일을 Storage에 업로드하고 Firestore에 URL 저장
-  async function handleCompareFile(which, e){
-    const file = e.target.files?.[0]; if(!file) return;
-    const r=getCurrent(); if(!r) return;
-    // 로컬 프리뷰용으로는 기존처럼 저장
-    const key='b_'+Math.random().toString(36).slice(2);
-    await idb.put(key, file);
-    r.compare[which] = { name:file.name, blobKey:key, url:r.compare[which]?.url||null };
-    saveAndSync(); // 먼저 로컬 반영
-
-    // 로그인 상태면 Storage 업로드 → URL 저장
-    if(cloud.uid){
-      const path = `users/${cloud.uid}/reports/${r.id}/compare/${which}-${Date.now()}`;
-      const rf = ref(st, path);
-      await uploadBytes(rf, file);
-      const url = await getDownloadURL(rf);
-      r.compare[which].url = url;
-      saveAndSync(); // url까지 반영
-      // 즉시 프리뷰도 URL로 갱신
-      loadCompare(which);
-    }
-  }
-
-  // ============== 인증 UI ==============
-  $('#signInBtn')?.addEventListener('click', async ()=>{
-    try{
-      const provider = new GoogleAuthProvider();
-      await signInWithPopup(auth, provider);
-    }catch(e){ alert('로그인 실패: '+e.message); }
-  });
-  $('#signOutBtn')?.addEventListener('click', async ()=>{ await signOut(auth); });
-
-  onAuthStateChanged(auth, async (user)=>{
-    if(user){
-      cloud.uid = user.uid;
-      $('#signInBtn')?.classList.add('hidden');
-      $('#signOutBtn')?.classList.remove('hidden');
-      uiCloud('연결됨 (동기화 준비)');
-      // 클라우드 데이터 구독 시작
-      await startCloudSubscription();
-      // 로컬에만 있는 문서가 있으면 업로드(초기 마이그레이션)
-      for(const rep of state.reports){
-        await setDoc(doc(db, 'users', cloud.uid, 'reports', rep.id), rep, { merge: true });
-      }
-      uiCloud('초기 업로드 완료');
-    }else{
-      cloud.uid = null;
-      $('#signInBtn')?.classList.remove('hidden');
-      $('#signOutBtn')?.classList.add('hidden');
-      uiCloud('미연결');
-      // 구독 해제
-      cloud.unsub?.(); cloud.unsub=null;
-      // 로컬만으로 동작
-      renderReportList(); renderEditor(); renderCalendar();
-    }
-  });
-
-  // ================= 부가 헬퍼 =================
-  function compact(txt,max=140){ txt=String(txt).trim().replace(/\s+/g,' '); if(txt.length<=max) return txt; return txt.slice(0,max-1)+'…'; }
-
-  // ======== 달력 렌더/네비 버튼 연결 ========
-  function renderCalendarWrap(){ renderCalendar(); }
-  const origSaveLocal = saveLocal;
-  function saveLocalAndCalendar(){ origSaveLocal(); renderCalendarWrap(); }
-
-  // saveAndSync()가 내부적으로 saveLocal()을 호출하므로, 기존 saveState 대체:
-  // (기존 코드 호환을 위해 이름 유지)
-  window.saveState = ()=> saveAndSync();
-  window.loadState = ()=> loadLocal();
-
-  // ======== 부팅 ========
-  function boot(){
-    loadLocal();
-    if(!state.reports.length){ const r=createEmptyReport(); state.reports.push(r); state.currentId=r.id; saveLocalAndCalendar(); }
-    else if(!state.currentId){ state.currentId=state.reports[0].id; saveLocalAndCalendar(); }
-    renderReportList(); bindInputs(); renderEditor(); renderCalendar();
-    // 달력 네비 버튼
-    $('#calPrev')?.addEventListener('click', ()=> changeMonth(-1));
-    $('#calNext')?.addEventListener('click', ()=> changeMonth(+1));
-  }
-  document.addEventListener('DOMContentLoaded', boot);
-</script>
+    document.addEventListener('DOMContentLoaded', boot);
+  </script>
+</body>
+</html>

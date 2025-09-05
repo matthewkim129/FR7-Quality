@@ -298,7 +298,7 @@
       nowString(){ return new Date().toLocaleString('ko-KR', { timeZone: 'Asia/Seoul', hour12: false }); },
       todayISO(){ const d = new Date(new Date().toLocaleString('en-US', { timeZone: 'Asia/Seoul' })); return d.toISOString().slice(0,10); }
     };
-    const LS_KEY = 'fr7-daily-reports-v7';
+    const LS_KEY = 'fr7-daily-reports-v8';
     let state = { reports: [], currentId: null };
     function loadLocal(){ try{ const raw = localStorage.getItem(LS_KEY); if(raw){ state = JSON.parse(raw); } }catch(e){ console.warn('loadLocal error', e); } }
     function saveLocal(){ localStorage.setItem(LS_KEY, JSON.stringify(state)); const s=$('#autosaveState'); if(s) s.textContent = '저장 상태: ' + new Date().toLocaleTimeString(); }
